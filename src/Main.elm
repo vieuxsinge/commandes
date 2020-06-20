@@ -1,9 +1,9 @@
 port module Main exposing (..)
 
 import Browser
-import Html exposing (Html, button, div, form, h1, img, input, li, map, table, tbody, td, text, th, thead, tr, ul)
+import Html exposing (..)
 import Html.Attributes exposing (class, src, value)
-import Html.Events exposing (onInput, onSubmit)
+import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
 import Json.Decode.Pipeline exposing (required)
 import Json.Encode
@@ -12,6 +12,8 @@ import List.Extra
 import Maybe.Extra exposing (isJust, join, values)
 import Parser exposing ((|.), (|=), Parser, chompWhile, getChompedString, int, run, spaces, succeed, symbol)
 import Time
+import Time.Format
+import Time.Format.Config.Config_fr_fr exposing (config)
 
 
 
@@ -21,6 +23,7 @@ import Time
 type alias Model =
     { orderInput : String
     , currentDate : Time.Posix
+    , editedItemNumber : Maybe Int
     , currentOrder : Maybe Order
     , orders : List Order
     }
@@ -59,6 +62,7 @@ init encodedOrders =
                     []
     in
     ( { orderInput = ""
+      , editedItemNumber = Nothing
       , currentDate = Time.millisToPosix 0
       , currentOrder = Nothing
       , orders = orders
@@ -74,6 +78,7 @@ init encodedOrders =
 type Msg
     = UpdateInput String
     | SaveOrder
+    | EditOrder Order Int
     | Tick Time.Posix
 
 
@@ -88,17 +93,39 @@ update msg model =
             , Cmd.none
             )
 
+        EditOrder order itemNumber ->
+            let
+                stringOrder =
+                    orderToString order
+
+                updatedModel =
+                    { model
+                        | orderInput = stringOrder
+                        , editedItemNumber = Just itemNumber
+                    }
+            in
+            update (UpdateInput stringOrder) updatedModel
+
         SaveOrder ->
             case model.currentOrder of
                 Just order ->
                     let
+                        newOrder =
+                            { order | date = model.currentDate }
+
                         orders =
-                            model.orders ++ [ { order | date = model.currentDate } ]
+                            case model.editedItemNumber of
+                                Just int ->
+                                    List.Extra.setAt int newOrder model.orders
+
+                                Nothing ->
+                                    model.orders ++ [ newOrder ]
                     in
                     ( { model
                         | orders = orders
                         , currentOrder = Nothing
                         , orderInput = ""
+                        , editedItemNumber = Nothing
                       }
                     , storeOrders (encodeOrders orders)
                     )
@@ -122,6 +149,23 @@ parseItems stringItems =
                 |> List.map (\x -> run orderline x |> Result.toMaybe)
                 |> Debug.log "parsed"
                 |> List.filterMap identity
+
+
+orderToString : Order -> String
+orderToString order =
+    let
+        orders =
+            String.join ", " <|
+                List.map
+                    (\x ->
+                        (.quantity x |> String.fromInt)
+                            ++ "x"
+                            ++ .beer x
+                            ++ (.format x |> String.fromInt)
+                    )
+                    order.orders
+    in
+    order.customer ++ " : " ++ orders
 
 
 
@@ -221,7 +265,12 @@ view model =
                     Nothing ->
                         text ""
                 ]
-            , viewTableOrders model.orders
+            , section [ class "section" ]
+                [ div [ class "columns is-centered" ]
+                    [ div [ class "column is-narrow" ]
+                        [ viewTableOrders model.orders ]
+                    ]
+                ]
             ]
         ]
 
@@ -235,26 +284,34 @@ viewTableOrders orders =
         headers =
             List.foldr (::) (List.map displayBeerName beerNames) [ "Date", "Client" ]
     in
-    table []
+    table [ class "table" ]
         [ thead []
             [ tr [] (List.map (\h -> th [] [ text h ]) headers)
             ]
-        , tbody [] (List.map (viewLine beerNames) orders)
+        , tbody [] (List.indexedMap (viewLine beerNames) orders)
         ]
 
 
-viewLine : List String -> Order -> Html Msg
-viewLine beerNames order =
+viewLine : List String -> Int -> Order -> Html Msg
+viewLine beerNames itemNumber order =
     let
         orderInfo =
-            [ th [] [ Time.posixToMillis order.date |> String.fromInt |> text ]
+            [ th []
+                [ text
+                    (Time.Format.format
+                        config
+                        "%-d %B"
+                        Time.utc
+                        order.date
+                    )
+                ]
             , th [] [ text order.customer ]
             ]
 
         columns =
             List.foldr (::) (viewColumnsForBeers beerNames order.orders) orderInfo
     in
-    tr [] columns
+    tr [ onClick (EditOrder order itemNumber) ] columns
 
 
 viewColumnsForBeers : List String -> List OrderLine -> List (Html Msg)
