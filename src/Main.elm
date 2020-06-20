@@ -29,17 +29,17 @@ type alias Model =
     }
 
 
-type alias Order =
-    { customer : String
-    , orders : List OrderLine
-    , date : Time.Posix
-    }
-
-
 type alias OrderLine =
     { quantity : Int
     , beer : String
     , format : Int
+    }
+
+
+type alias Order =
+    { customer : String
+    , orders : List OrderLine
+    , date : Time.Posix
     }
 
 
@@ -283,13 +283,44 @@ viewTableOrders orders =
 
         headers =
             List.foldr (::) (List.map displayBeerName beerNames) [ "Date", "Client" ]
+
+        lines =
+            viewSums beerNames orders
+                :: List.indexedMap (viewLine beerNames) orders
     in
     table [ class "table" ]
         [ thead []
             [ tr [] (List.map (\h -> th [] [ text h ]) headers)
             ]
-        , tbody [] (List.indexedMap (viewLine beerNames) orders)
+        , tbody [] lines
         ]
+
+
+viewSums : List String -> List Order -> Html Msg
+viewSums beerNames orders =
+    let
+        headers =
+            [ td [] [ text "Totaux" ]
+            , td [] []
+            ]
+
+        sumCell amount =
+            td [] [ String.fromInt amount |> text ]
+
+        cells =
+            List.map (getSum orders) beerNames
+                |> List.map sumCell
+    in
+    tr [ class "totaux" ] (List.foldr (::) cells headers)
+
+
+getSum : List Order -> String -> Int
+getSum orders beerName =
+    List.map .orders orders
+        |> List.concat
+        |> List.filter (\x -> .beer x == beerName)
+        |> List.map .quantity
+        |> List.sum
 
 
 viewLine : List String -> Int -> Order -> Html Msg
