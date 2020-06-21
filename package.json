@@ -1,0 +1,27 @@
+{
+  "name": "commandes",
+  "version": "1.0.0",
+  "description": "This project is bootstrapped with [Create Elm App](https://github.com/halfzebra/create-elm-app).",
+  "main": "elmapp.config.js",
+  "directories": {
+    "test": "tests"
+  },
+  "dependencies": {
+    "odoo-xmlrpc": "^1.0.8",
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/almet/commandes.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/almet/commandes/issues"
+  },
+  "homepage": "https://github.com/almet/commandes#readme"
+}

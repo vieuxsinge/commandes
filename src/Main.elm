@@ -1,8 +1,9 @@
 port module Main exposing (..)
 
 import Browser
+import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, src, value)
+import Html.Attributes exposing (class, placeholder, src, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
 import Json.Decode.Pipeline exposing (required)
@@ -18,6 +19,15 @@ import Time.Format.Config.Config_fr_fr exposing (config)
 
 
 ---- MODEL ----
+-- type alias Stock =
+--     Dict ( String, String ) Int
+
+
+type alias StockItem =
+    { name : String
+    , quantity : Int
+    , format : Float
+    }
 
 
 type alias Model =
@@ -26,6 +36,9 @@ type alias Model =
     , editedItemNumber : Maybe Int
     , currentOrder : Maybe Order
     , orders : List Order
+    , serverPassword : Maybe String
+    , serverPasswordInput : String
+    , stock : List StockItem
     }
 
 
@@ -43,11 +56,19 @@ type alias Order =
     }
 
 
-init : String -> ( Model, Cmd Msg )
-init encodedOrders =
+init : ( String, String ) -> ( Model, Cmd Msg )
+init ( encodedOrders, serverPassword ) =
     let
         decodedOrders =
             Json.Decode.decodeString ordersDecoder encodedOrders
+
+        decodedPassword =
+            case serverPassword of
+                "" ->
+                    Nothing
+
+                string ->
+                    Just string
 
         orders =
             case decodedOrders of
@@ -66,6 +87,9 @@ init encodedOrders =
       , currentDate = Time.millisToPosix 0
       , currentOrder = Nothing
       , orders = orders
+      , serverPassword = decodedPassword
+      , serverPasswordInput = ""
+      , stock = []
       }
     , Cmd.none
     )
@@ -79,12 +103,36 @@ type Msg
     = UpdateInput String
     | SaveOrder
     | EditOrder Order Int
+    | ResetOrders
+    | SaveServerPassword
+    | UpdateServerPassword String
     | Tick Time.Posix
+    | UpdateStock String
+    | RetrieveStock
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        UpdateServerPassword content ->
+            ( { model
+                | serverPasswordInput = content
+              }
+            , Cmd.none
+            )
+
+        SaveServerPassword ->
+            let
+                password =
+                    model.serverPasswordInput
+            in
+            ( { model
+                | serverPassword = Just password
+                , serverPasswordInput = ""
+              }
+            , storePassword password
+            )
+
         UpdateInput content ->
             ( { model
                 | currentOrder = Just (parseInput content)
@@ -92,6 +140,9 @@ update msg model =
               }
             , Cmd.none
             )
+
+        ResetOrders ->
+            ( { model | orders = [] }, storeOrders (encodeOrders []) )
 
         EditOrder order itemNumber ->
             let
@@ -135,6 +186,21 @@ update msg model =
 
         Tick date ->
             ( { model | currentDate = date }, Cmd.none )
+
+        RetrieveStock ->
+            ( model, retrieveStockFromServer "" )
+
+        UpdateStock stock ->
+            let
+                decodedStock =
+                    case Json.Decode.decodeString stockDecoder stock of
+                        Ok value ->
+                            value
+
+                        Err _ ->
+                            []
+            in
+            ( { model | stock = decodedStock }, Cmd.none )
 
 
 parseItems : Maybe String -> List OrderLine
@@ -252,23 +318,56 @@ viewBeerList beers =
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ h1 [] [ text "Entrez une nouvelle commande" ]
-        , form [ onSubmit SaveOrder ]
-            [ input [ class "order", onInput UpdateInput, value model.orderInput ] []
-            , button [ class "submit" ] []
-            , div [ class "current-order" ]
-                [ case model.currentOrder of
-                    Just order ->
-                        viewOrder order
+    case model.serverPassword of
+        Just string ->
+            mainView model
 
-                    Nothing ->
-                        text ""
+        Nothing ->
+            enterPasswordView model
+
+
+enterPasswordView : Model -> Html Msg
+enterPasswordView model =
+    div []
+        [ form [ onSubmit SaveServerPassword ]
+            [ input [ placeholder "Merci de rentrer le code d'accès a Odoo", onInput UpdateServerPassword, value model.serverPasswordInput ] []
+            ]
+        ]
+
+
+mainView : Model -> Html Msg
+mainView model =
+    div [ class "section" ]
+        [ div [ class "container" ]
+            [ nav [ class "level" ]
+                [ div [ class "level-left" ]
+                    [ div [ class "level-item" ]
+                        [ h1 [] [ text "Liste des commandes" ]
+                        ]
+                    ]
+                , div [ class "level-right" ]
+                    [ p [ class "level-item", onClick ResetOrders ] [ text "reset" ]
+                    , p [ class "level-item", onClick RetrieveStock ] [ text "récup le stock !" ]
+                    ]
                 ]
-            , section [ class "section" ]
-                [ div [ class "columns is-centered" ]
-                    [ div [ class "column is-narrow" ]
-                        [ viewTableOrders model.orders ]
+            , div []
+                [ form [ onSubmit SaveOrder ]
+                    [ input [ placeholder "Entre une commande ici, par ex \"400 Coups : 10xST20\"", class "order", onInput UpdateInput, value model.orderInput ] []
+                    , button [ class "submit" ] []
+                    ]
+                , div [ class "current-order" ]
+                    [ case model.currentOrder of
+                        Just order ->
+                            viewOrder order
+
+                        Nothing ->
+                            text ""
+                    ]
+                , section [ class "section" ]
+                    [ div [ class "columns is-centered" ]
+                        [ div [ class "column is-narrow" ]
+                            [ viewTableOrders model.orders ]
+                        ]
                     ]
                 ]
             ]
@@ -288,12 +387,17 @@ viewTableOrders orders =
             viewSums beerNames orders
                 :: List.indexedMap (viewLine beerNames) orders
     in
-    table [ class "table" ]
-        [ thead []
-            [ tr [] (List.map (\h -> th [] [ text h ]) headers)
-            ]
-        , tbody [] lines
-        ]
+    case orders of
+        [] ->
+            p [] [ text "" ]
+
+        items ->
+            table [ class "table" ]
+                [ thead []
+                    [ tr [] (List.map (\h -> th [] [ text h ]) headers)
+                    ]
+                , tbody [] lines
+                ]
 
 
 viewSums : List String -> List Order -> Html Msg
@@ -368,7 +472,10 @@ viewColumnsForBeers beerNames orders =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Time.every 1000 Tick
+    Sub.batch
+        [ Time.every 1000 Tick
+        , updateStock UpdateStock
+        ]
 
 
 
@@ -398,6 +505,19 @@ encodeOrderLine orderLine =
         ]
 
 
+stockDecoder : Json.Decode.Decoder (List StockItem)
+stockDecoder =
+    Json.Decode.list stockItemDecoder
+
+
+stockItemDecoder : Json.Decode.Decoder StockItem
+stockItemDecoder =
+    Json.Decode.succeed StockItem
+        |> required "x_beername" Json.Decode.string
+        |> required "qty_available" Json.Decode.int
+        |> required "x_volume" Json.Decode.float
+
+
 ordersDecoder : Json.Decode.Decoder (List Order)
 ordersDecoder =
     Json.Decode.list orderDecoder
@@ -422,11 +542,20 @@ orderLineDecoder =
 port storeOrders : Json.Encode.Value -> Cmd msg
 
 
+port storePassword : String -> Cmd msg
+
+
+port retrieveStockFromServer : String -> Cmd msg
+
+
+port updateStock : (String -> msg) -> Sub msg
+
+
 
 ---- PROGRAM ----
 
 
-main : Program String Model Msg
+main : Program ( String, String ) Model Msg
 main =
     Browser.element
         { view = view
