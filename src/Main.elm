@@ -3,7 +3,7 @@ port module Main exposing (..)
 import Browser
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, placeholder, src, value)
+import Html.Attributes exposing (class, colspan, placeholder, src, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
 import Json.Decode.Pipeline exposing (required)
@@ -12,22 +12,10 @@ import List
 import List.Extra
 import Maybe.Extra exposing (isJust, join, values)
 import Parser exposing ((|.), (|=), Parser, chompWhile, getChompedString, int, run, spaces, succeed, symbol)
+import Stock
 import Time
 import Time.Format
 import Time.Format.Config.Config_fr_fr exposing (config)
-
-
-
----- MODEL ----
--- type alias Stock =
---     Dict ( String, String ) Int
-
-
-type alias StockItem =
-    { name : String
-    , quantity : Int
-    , format : Float
-    }
 
 
 type alias Model =
@@ -38,7 +26,7 @@ type alias Model =
     , orders : List Order
     , serverPassword : Maybe String
     , serverPasswordInput : String
-    , stock : List StockItem
+    , stock : Stock.Stock
     }
 
 
@@ -51,7 +39,7 @@ type alias OrderLine =
 
 type alias Order =
     { customer : String
-    , orders : List OrderLine
+    , lines : List OrderLine
     , date : Time.Posix
     }
 
@@ -89,7 +77,7 @@ init ( encodedOrders, serverPassword ) =
       , orders = orders
       , serverPassword = decodedPassword
       , serverPasswordInput = ""
-      , stock = []
+      , stock = Stock.empty
       }
     , Cmd.none
     )
@@ -191,16 +179,7 @@ update msg model =
             ( model, retrieveStockFromServer "" )
 
         UpdateStock stock ->
-            let
-                decodedStock =
-                    case Json.Decode.decodeString stockDecoder stock of
-                        Ok value ->
-                            value
-
-                        Err _ ->
-                            []
-            in
-            ( { model | stock = decodedStock }, Cmd.none )
+            ( { model | stock = Stock.decode stock }, Cmd.none )
 
 
 parseItems : Maybe String -> List OrderLine
@@ -229,7 +208,7 @@ orderToString order =
                             ++ .beer x
                             ++ (.format x |> String.fromInt)
                     )
-                    order.orders
+                    order.lines
     in
     order.customer ++ " : " ++ orders
 
@@ -260,7 +239,7 @@ parseInput input =
             splits |> List.drop 1 |> List.head |> parseItems
     in
     { customer = customer
-    , orders = items
+    , lines = items
     , date = Time.millisToPosix 0
     }
 
@@ -290,12 +269,12 @@ displayBeerName str =
 
 getBeers : List Order -> List String
 getBeers orders =
-    orders |> List.map .orders |> List.concat |> List.map .beer |> List.Extra.unique
+    orders |> List.map .lines |> List.concat |> List.map .beer |> List.Extra.unique
 
 
 getBeerFromOrder : String -> List OrderLine -> Maybe OrderLine
-getBeerFromOrder beerName orders =
-    List.filter (\x -> .beer x == beerName) orders |> List.head
+getBeerFromOrder beerName lines =
+    List.filter (\x -> .beer x == beerName) lines |> List.head
 
 
 viewOrderLine : OrderLine -> Html Msg
@@ -307,7 +286,7 @@ viewOrder : Order -> Html Msg
 viewOrder order =
     div []
         [ div [] [ text order.customer ]
-        , ul [] (List.map viewOrderLine order.orders)
+        , ul [] (List.map viewOrderLine order.lines)
         ]
 
 
@@ -366,7 +345,9 @@ mainView model =
                 , section [ class "section" ]
                     [ div [ class "columns is-centered" ]
                         [ div [ class "column is-narrow" ]
-                            [ viewTableOrders model.orders ]
+                            [ Stock.viewTableStock model.stock
+                            , viewTableOrders model.orders
+                            ]
                         ]
                     ]
                 ]
@@ -420,7 +401,7 @@ viewSums beerNames orders =
 
 getSum : List Order -> String -> Int
 getSum orders beerName =
-    List.map .orders orders
+    List.map .lines orders
         |> List.concat
         |> List.filter (\x -> .beer x == beerName)
         |> List.map .quantity
@@ -444,7 +425,7 @@ viewLine beerNames itemNumber order =
             ]
 
         columns =
-            List.foldr (::) (viewColumnsForBeers beerNames order.orders) orderInfo
+            List.foldr (::) (viewColumnsForBeers beerNames order.lines) orderInfo
     in
     tr [ onClick (EditOrder order itemNumber) ] columns
 
@@ -491,7 +472,7 @@ encodeOrder : Order -> Json.Encode.Value
 encodeOrder order =
     Json.Encode.object
         [ ( "customer", Json.Encode.string order.customer )
-        , ( "orders", Json.Encode.list encodeOrderLine order.orders )
+        , ( "orders", Json.Encode.list encodeOrderLine order.lines )
         , ( "date", order.date |> Time.posixToMillis |> Json.Encode.int )
         ]
 
@@ -503,19 +484,6 @@ encodeOrderLine orderLine =
         , ( "beer", Json.Encode.string orderLine.beer )
         , ( "format", Json.Encode.int orderLine.format )
         ]
-
-
-stockDecoder : Json.Decode.Decoder (List StockItem)
-stockDecoder =
-    Json.Decode.list stockItemDecoder
-
-
-stockItemDecoder : Json.Decode.Decoder StockItem
-stockItemDecoder =
-    Json.Decode.succeed StockItem
-        |> required "x_beername" Json.Decode.string
-        |> required "qty_available" Json.Decode.int
-        |> required "x_volume" Json.Decode.float
 
 
 ordersDecoder : Json.Decode.Decoder (List Order)

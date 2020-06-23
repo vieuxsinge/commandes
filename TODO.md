@@ -1,0 +1,10 @@
+- Trouver un meilleur design
+- Améliorer l'affichage de la commande actuelle
+- Uniformiser les formats → 75cl, 33cl, 20L (actuellement ceux récup sont en 0,33, 0,75, 20,0)
+- Afficher dans le tableau de commandes toutes les bières et leur format.
+- Afficher les stocks restants pour chaque bière / format en haut du tableau
+- Faire un autocomplete pour le client (récup de la liste depuis Odoo, et ensuite filtre, puis stockage de l'id)
+- Transformer les commandes en des devis dans Odoo
+- Transformer en SPA avec différentes pages
+- Ajouter une page pour la gestion des conditionnements, qui crée automatiquement le compte dans Odoo
+- Ajouter une page qui génère le fichier pour les douanes
