@@ -45,6 +45,14 @@ asBoxes ( format, quantity ) =
             0
 
 
+hasStock : ( String, StockItem ) -> Bool
+hasStock ( string, stockItem ) =
+    stockItem
+        |> List.map Tuple.second
+        |> List.sum
+        |> (<=) 1
+
+
 viewStockForBeer : ( String, StockItem ) -> Html msg
 viewStockForBeer ( beerName, stockItem ) =
     let
@@ -76,7 +84,10 @@ viewTableStock stock =
                 ]
             ]
         , tbody []
-            (Dict.toList stock |> List.map viewStockForBeer)
+            (Dict.toList stock
+                |> List.filter hasStock
+                |> List.map viewStockForBeer
+            )
         ]
 
 
