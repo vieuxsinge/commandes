@@ -24,6 +24,7 @@ type alias Model =
     , editedItemNumber : Maybe Int
     , currentOrder : Maybe Order
     , orders : List Order
+    , customers : List Customer
     , serverPassword : Maybe String
     , serverPasswordInput : String
     , stock : Stock.Stock
@@ -41,6 +42,12 @@ type alias Order =
     { customer : String
     , lines : List OrderLine
     , date : Time.Posix
+    }
+
+
+type alias Customer =
+    { id : Int
+    , name : String
     }
 
 
@@ -78,6 +85,7 @@ init ( encodedOrders, serverPassword ) =
       , serverPassword = decodedPassword
       , serverPasswordInput = ""
       , stock = Stock.empty
+      , customers = []
       }
     , Cmd.none
     )
@@ -95,8 +103,10 @@ type Msg
     | SaveServerPassword
     | UpdateServerPassword String
     | Tick Time.Posix
-    | UpdateStock String
     | RetrieveStock
+    | UpdateStock String
+    | RetrieveCustomers
+    | UpdateCustomers String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -178,8 +188,18 @@ update msg model =
         RetrieveStock ->
             ( model, retrieveStockFromServer "" )
 
+        RetrieveCustomers ->
+            ( model, retrieveCustomersFromServer "" )
+
         UpdateStock stock ->
             ( { model | stock = Stock.decode stock }, Cmd.none )
+
+        UpdateCustomers encodedCustomers ->
+            let
+                customers =
+                    Json.Decode.decodeString customersDecoder encodedCustomers |> Result.withDefault []
+            in
+            ( { model | customers = customers }, storeCustomers (encodeCustomers customers) )
 
 
 parseItems : Maybe String -> List OrderLine
@@ -327,6 +347,7 @@ mainView model =
                 , div [ class "level-right" ]
                     [ p [ class "level-item", onClick ResetOrders ] [ text "reset" ]
                     , p [ class "level-item", onClick RetrieveStock ] [ text "récup le stock !" ]
+                    , p [ class "level-item", onClick RetrieveCustomers ] [ text "get customers" ]
                     ]
                 ]
             , div []
@@ -456,6 +477,7 @@ subscriptions model =
     Sub.batch
         [ Time.every 1000 Tick
         , updateStock UpdateStock
+        , updateCustomers UpdateCustomers
         ]
 
 
@@ -507,7 +529,35 @@ orderLineDecoder =
         |> required "format" Json.Decode.int
 
 
+customersDecoder : Json.Decode.Decoder (List Customer)
+customersDecoder =
+    Json.Decode.list customerDecoder
+
+
+customerDecoder : Json.Decode.Decoder Customer
+customerDecoder =
+    Json.Decode.succeed Customer
+        |> required "id" Json.Decode.int
+        |> required "name" Json.Decode.string
+
+
+encodeCustomers : List Customer -> Json.Encode.Value
+encodeCustomers customers =
+    Json.Encode.list encodeCustomer customers
+
+
+encodeCustomer : Customer -> Json.Encode.Value
+encodeCustomer customer =
+    Json.Encode.object
+        [ ( "id", Json.Encode.int customer.id )
+        , ( "name", Json.Encode.string customer.name )
+        ]
+
+
 port storeOrders : Json.Encode.Value -> Cmd msg
+
+
+port storeCustomers : Json.Encode.Value -> Cmd msg
 
 
 port storePassword : String -> Cmd msg
@@ -516,7 +566,13 @@ port storePassword : String -> Cmd msg
 port retrieveStockFromServer : String -> Cmd msg
 
 
+port retrieveCustomersFromServer : String -> Cmd msg
+
+
 port updateStock : (String -> msg) -> Sub msg
+
+
+port updateCustomers : (String -> msg) -> Sub msg
 
 
 

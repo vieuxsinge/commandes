@@ -16,12 +16,20 @@ app.ports.storeOrders.subscribe(function (orders) {
   localStorage.setItem("orders", JSON.stringify(orders));
 });
 
+app.ports.storeCustomers.subscribe(function (customers) {
+  localStorage.setItem("customers", JSON.stringify(customers));
+});
+
 app.ports.storePassword.subscribe(function (password) {
   localStorage.setItem("odooPassword", password);
 });
 
 app.ports.retrieveStockFromServer.subscribe(function (useless) {
   getStockFromOdoo();
+});
+
+app.ports.retrieveCustomersFromServer.subscribe(function (useless) {
+  getCustomers();
 });
 
 // If you want your app to work offline and load faster, you can change
@@ -49,6 +57,22 @@ function getStockFromOdoo() {
         {'fields': ['x_beername', 'qty_available', 'x_volume']}
       ], function(err, items) {
         app.ports.updateStock.send(JSON.stringify(items));
+      });
+    });
+}
+
+function getCustomers() {
+  odoo.connect(function (err) {
+    if (err) { return console.log(err); }
+
+    odoo.execute_kw(
+      'res.partner',
+      'search_read',
+      [
+        [[['is_company', '=', true],['customer', '=', true]]],
+        {'fields': ['name']}
+      ], function(err, items) {
+        app.ports.updateCustomers.send(JSON.stringify(items));
       });
     });
 }
