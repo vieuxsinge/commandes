@@ -26,8 +26,7 @@ img {
   max-width: 200px;
 }
 
-.order {
-  width: 60%;
+input {
   height: 40px;
 }
 
@@ -37,4 +36,37 @@ img {
 
 .totaux {
   background-color: #c5c5c51f;
+}
+
+.order-input, .customer-input {
+  border: 1px #eaeaea solid;
+  width: 100%;
+  padding-left: 1em;
+}
+
+.customer-menu-item {
+  padding: 0.5em;
+}
+
+.customer-menu-item :hover {
+  background-color: #eaeaea;
+}
+
+.customer-menu {
+  width: 100%;
+  background-color: white;
+  border: 1px #eaeaea solid;
+}
+
+.item-higlighted {
+  background-color: #eaeaea;
+}
+
+.elm-select {
+    width: 100%;
+}
+
+#order-form {
+  width: 100%;
+  display: flex;
 }

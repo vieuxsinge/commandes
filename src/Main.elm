@@ -3,7 +3,7 @@ port module Main exposing (..)
 import Browser
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, colspan, placeholder, src, value)
+import Html.Attributes exposing (class, colspan, id, placeholder, src, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
 import Json.Decode.Pipeline exposing (required)
@@ -12,6 +12,8 @@ import List
 import List.Extra
 import Maybe.Extra exposing (isJust, join, values)
 import Parser exposing ((|.), (|=), Parser, chompWhile, getChompedString, int, run, spaces, succeed, symbol)
+import Select
+import Simple.Fuzzy
 import Stock
 import Time
 import Time.Format
@@ -20,6 +22,10 @@ import Time.Format.Config.Config_fr_fr exposing (config)
 
 type alias Model =
     { orderInput : String
+    , clientInput : String
+    , selectedCustomerId : Maybe Int
+    , selectedCustomer : Maybe Customer
+    , selectState : Select.State
     , currentDate : Time.Posix
     , editedItemNumber : Maybe Int
     , currentOrder : Maybe Order
@@ -39,7 +45,7 @@ type alias OrderLine =
 
 
 type alias Order =
-    { customer : String
+    { customer : Customer
     , lines : List OrderLine
     , date : Time.Posix
     }
@@ -49,6 +55,10 @@ type alias Customer =
     { id : Int
     , name : String
     }
+
+
+noCustomer =
+    Customer 0 "NO CUSTOMER"
 
 
 init : ( String, String ) -> ( Model, Cmd Msg )
@@ -86,6 +96,10 @@ init ( encodedOrders, serverPassword ) =
       , serverPasswordInput = ""
       , stock = Stock.empty
       , customers = []
+      , clientInput = ""
+      , selectState = Select.newState ""
+      , selectedCustomerId = Nothing
+      , selectedCustomer = Nothing
       }
     , Cmd.none
     )
@@ -97,6 +111,7 @@ init ( encodedOrders, serverPassword ) =
 
 type Msg
     = UpdateInput String
+    | UpdateClientInput String
     | SaveOrder
     | EditOrder Order Int
     | ResetOrders
@@ -107,11 +122,23 @@ type Msg
     | UpdateStock String
     | RetrieveCustomers
     | UpdateCustomers String
+    | OnSelect (Maybe Customer)
+    | SelectMsg (Select.Msg Customer)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        OnSelect maybeCustomer ->
+            ( { model | selectedCustomer = maybeCustomer }, Cmd.none )
+
+        SelectMsg subMsg ->
+            let
+                ( updated, cmd ) =
+                    Select.update selectConfig subMsg model.selectState
+            in
+            ( { model | selectState = updated }, cmd )
+
         UpdateServerPassword content ->
             ( { model
                 | serverPasswordInput = content
@@ -132,9 +159,26 @@ update msg model =
             )
 
         UpdateInput content ->
+            let
+                customer =
+                    model.selectedCustomer |> Maybe.withDefault noCustomer
+
+                order =
+                    Order
+                        customer
+                        (parseItems (Just content))
+                        model.currentDate
+            in
             ( { model
-                | currentOrder = Just (parseInput content)
+                | currentOrder = Just order
                 , orderInput = content
+              }
+            , Cmd.none
+            )
+
+        UpdateClientInput content ->
+            ( { model
+                | clientInput = content
               }
             , Cmd.none
             )
@@ -146,14 +190,13 @@ update msg model =
             let
                 stringOrder =
                     orderToString order
-
-                updatedModel =
-                    { model
-                        | orderInput = stringOrder
-                        , editedItemNumber = Just itemNumber
-                    }
             in
-            update (UpdateInput stringOrder) updatedModel
+            update (UpdateInput stringOrder)
+                { model
+                    | orderInput = stringOrder
+                    , editedItemNumber = Just itemNumber
+                    , selectedCustomer = Just order.customer
+                }
 
         SaveOrder ->
             case model.currentOrder of
@@ -175,6 +218,7 @@ update msg model =
                         , currentOrder = Nothing
                         , orderInput = ""
                         , editedItemNumber = Nothing
+                        , selectedCustomer = Nothing
                       }
                     , storeOrders (encodeOrders orders)
                     )
@@ -212,7 +256,6 @@ parseItems stringItems =
             String.split "," string
                 |> List.map String.trim
                 |> List.map (\x -> run orderline x |> Result.toMaybe)
-                |> Debug.log "parsed"
                 |> List.filterMap identity
 
 
@@ -224,13 +267,12 @@ orderToString order =
                 List.map
                     (\x ->
                         (.quantity x |> String.fromInt)
-                            ++ "x"
                             ++ .beer x
                             ++ (.format x |> String.fromInt)
                     )
                     order.lines
     in
-    order.customer ++ " : " ++ orders
+    orders
 
 
 
@@ -241,27 +283,19 @@ orderline : Parser OrderLine
 orderline =
     succeed OrderLine
         |= int
-        |. symbol "x"
         |= (getChompedString <| chompWhile Char.isUpper)
         |= int
 
 
-parseInput : String -> Order
-parseInput input =
-    let
-        splits =
-            String.split ":" input |> List.map String.trim
+fuzzyFilter : Int -> (a -> String) -> String -> List a -> Maybe (List a)
+fuzzyFilter minChars toLabel query items =
+    if String.length query < minChars then
+        Nothing
 
-        customer =
-            splits |> List.head |> Maybe.withDefault ""
-
-        items =
-            splits |> List.drop 1 |> List.head |> parseItems
-    in
-    { customer = customer
-    , lines = items
-    , date = Time.millisToPosix 0
-    }
+    else
+        items
+            |> Simple.Fuzzy.filter toLabel query
+            |> Just
 
 
 
@@ -305,7 +339,7 @@ viewOrderLine orderLine =
 viewOrder : Order -> Html Msg
 viewOrder order =
     div []
-        [ div [] [ text order.customer ]
+        [ div [] [ text order.customer.name ]
         , ul [] (List.map viewOrderLine order.lines)
         ]
 
@@ -350,26 +384,37 @@ mainView model =
                     , p [ class "level-item", onClick RetrieveCustomers ] [ text "get customers" ]
                     ]
                 ]
-            , div []
-                [ form [ onSubmit SaveOrder ]
-                    [ input [ placeholder "Entre une commande ici, par ex \"400 Coups : 10xST20\"", class "order", onInput UpdateInput, value model.orderInput ] []
-                    , button [ class "submit" ] []
+            , div [ class "columns" ]
+                [ form [ id "order-form", onSubmit SaveOrder ]
+                    [ div [ class "column is-one-third" ] [ customerInputView model ]
+                    , div [ class "column" ]
+                        [ input
+                            [ placeholder "Commande ici, par ex \"10ST20, 3NM75\""
+                            , class "order-input"
+                            , onInput UpdateInput
+                            , value model.orderInput
+                            ]
+                            []
+                        , button [ class "submit" ] []
+                        ]
                     ]
-                , div [ class "current-order" ]
+                ]
+            , div [ class "columns" ]
+                [ section [ class "column is-one-third" ]
+                    [ div [ class "columns is-centered" ]
+                        [ div [ class "column is-narrow" ]
+                            [ Stock.viewTableStock model.stock
+                            ]
+                        ]
+                    ]
+                , div [ class "column current-order" ]
                     [ case model.currentOrder of
                         Just order ->
                             viewOrder order
 
                         Nothing ->
                             text ""
-                    ]
-                , section [ class "section" ]
-                    [ div [ class "columns is-centered" ]
-                        [ div [ class "column is-narrow" ]
-                            [ Stock.viewTableStock model.stock
-                            , viewTableOrders model.orders
-                            ]
-                        ]
+                    , viewTableOrders model.orders
                     ]
                 ]
             ]
@@ -442,7 +487,7 @@ viewLine beerNames itemNumber order =
                         order.date
                     )
                 ]
-            , th [] [ text order.customer ]
+            , th [] [ text order.customer.name ]
             ]
 
         columns =
@@ -468,6 +513,44 @@ viewColumnsForBeers beerNames orders =
     List.map getLine filteredOrders
 
 
+customerInputView : Model -> Html Msg
+customerInputView model =
+    let
+        selectedCustomers : List Customer
+        selectedCustomers =
+            case model.selectedCustomerId of
+                Nothing ->
+                    []
+
+                Just id ->
+                    List.filter (\customer -> customer.id == id) model.customers
+
+        select =
+            Select.view
+                selectConfig
+                model.selectState
+                model.customers
+                selectedCustomers
+    in
+    Html.map SelectMsg select
+
+
+selectConfig : Select.Config Msg Customer
+selectConfig =
+    Select.newConfig
+        { onSelect = OnSelect
+        , toLabel = .name
+        , filter = fuzzyFilter 2 .name
+        }
+        |> Select.withNotFound "Aucun client correspondant"
+        |> Select.withInputWrapperClass "customer-input"
+        |> Select.withItemClass "customer-menu-item"
+        |> Select.withMenuClass "customer-menu"
+        |> Select.withHighlightedItemClass "item-higlighted"
+        |> Select.withPrompt "Nom dula client⋅e"
+        |> Select.withUnderlineClass "underline"
+
+
 
 ---- Subscriptions
 
@@ -475,7 +558,7 @@ viewColumnsForBeers beerNames orders =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ Time.every 1000 Tick
+        [ Time.every 30000 Tick
         , updateStock UpdateStock
         , updateCustomers UpdateCustomers
         ]
@@ -493,7 +576,7 @@ encodeOrders orders =
 encodeOrder : Order -> Json.Encode.Value
 encodeOrder order =
     Json.Encode.object
-        [ ( "customer", Json.Encode.string order.customer )
+        [ ( "customer", encodeCustomer order.customer )
         , ( "orders", Json.Encode.list encodeOrderLine order.lines )
         , ( "date", order.date |> Time.posixToMillis |> Json.Encode.int )
         ]
@@ -516,7 +599,7 @@ ordersDecoder =
 orderDecoder : Json.Decode.Decoder Order
 orderDecoder =
     Json.Decode.succeed Order
-        |> required "customer" Json.Decode.string
+        |> required "customer" customerDecoder
         |> required "orders" (Json.Decode.list orderLineDecoder)
         |> required "date" (Json.Decode.map Time.millisToPosix Json.Decode.int)
 

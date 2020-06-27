@@ -77,7 +77,7 @@ viewTableStock stock =
     table [ class "table" ]
         [ thead []
             [ tr []
-                [ th [] []
+                [ th [] [ text "Stock" ]
                 , th [] [ formatToString Bottle75 |> text ]
                 , th [] [ formatToString Bottle33 |> text ]
                 , th [] [ formatToString Keg20L |> text ]
