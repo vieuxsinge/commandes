@@ -6,10 +6,12 @@ import * as serviceWorker from "./serviceWorker";
 
 var app = Elm.Main.init({
   node: document.getElementById("root"),
-  flags: [
-    localStorage.getItem("orders") || "",
-    localStorage.getItem("odooPassword") || ""
-  ]
+  flags: {
+      encodedOrders : localStorage.getItem("orders") || ""
+    , encodedPassword : localStorage.getItem("odooPassword") || ""
+    , encodedCustomers : localStorage.getItem("customers") || ""
+    , encodedStock : localStorage.getItem("stock") || ""
+  }
 });
 
 app.ports.storeOrders.subscribe(function (orders) {
@@ -18,6 +20,10 @@ app.ports.storeOrders.subscribe(function (orders) {
 
 app.ports.storeCustomers.subscribe(function (customers) {
   localStorage.setItem("customers", JSON.stringify(customers));
+});
+
+app.ports.storeStock.subscribe(function (stock) {
+  localStorage.setItem("stock", JSON.stringify(stock));
 });
 
 app.ports.storePassword.subscribe(function (password) {
@@ -56,7 +62,8 @@ function getStockFromOdoo() {
         [[['x_volume', '>=', '0.1']]],
         {'fields': ['x_beername', 'qty_available', 'x_volume']}
       ], function(err, items) {
-        app.ports.updateStock.send(JSON.stringify(items));
+        console.log(items);
+        app.ports.gotStockFromServer.send(JSON.stringify(items));
       });
     });
 }
@@ -72,7 +79,7 @@ function getCustomers() {
         [[['is_company', '=', true],['customer', '=', true]]],
         {'fields': ['name']}
       ], function(err, items) {
-        app.ports.updateCustomers.send(JSON.stringify(items));
+        app.ports.gotCustomersFromServer.send(JSON.stringify(items));
       });
     });
 }

@@ -55,49 +55,56 @@ type alias Customer =
     }
 
 
+type alias Flags =
+    { encodedOrders : String
+    , encodedPassword : String
+    , encodedCustomers : String
+    , encodedStock : String
+    }
+
+
 noCustomer =
     Customer 0 "NO CUSTOMER"
 
 
-init : ( String, String ) -> ( Model, Cmd Msg )
-init ( encodedOrders, serverPassword ) =
+init : Flags -> ( Model, Cmd Msg )
+init { encodedOrders, encodedPassword, encodedCustomers, encodedStock } =
     let
-        decodedOrders =
-            Json.Decode.decodeString ordersDecoder encodedOrders
+        customers =
+            Json.Decode.decodeString customersDecoder encodedCustomers
+                |> Result.withDefault []
 
-        decodedPassword =
-            case serverPassword of
+        orders =
+            Json.Decode.decodeString ordersDecoder encodedOrders
+                |> Result.withDefault []
+
+        stock =
+            Stock.decodeStock encodedStock
+
+        password =
+            case encodedPassword of
                 "" ->
                     Nothing
 
                 string ->
                     Just string
-
-        orders =
-            case decodedOrders of
-                Ok decoded ->
-                    decoded
-
-                Err error ->
-                    let
-                        _ =
-                            Debug.log "Error while decoding JSON values" error
-                    in
-                    []
     in
     ( { orderInput = ""
       , editedItemNumber = Nothing
       , currentDate = Time.millisToPosix 0
       , currentOrder = Nothing
       , orders = orders
-      , serverPassword = decodedPassword
+      , serverPassword = password
       , serverPasswordInput = ""
-      , stock = Stock.empty
+      , stock = stock
       , customers = []
       , customerInput = ""
       , selectedCustomer = Nothing
       }
-    , Cmd.none
+    , Cmd.batch
+        [ retrieveCustomersFromServer ""
+        , retrieveStockFromServer ""
+        ]
     )
 
 
@@ -115,9 +122,9 @@ type Msg
     | UpdateServerPassword String
     | Tick Time.Posix
     | RetrieveStock
-    | UpdateStock String
+    | GotStockFromServer String
     | RetrieveCustomers
-    | UpdateCustomers String
+    | GotCustomersFromServer String
     | NoOp
 
 
@@ -229,10 +236,14 @@ update msg model =
         RetrieveCustomers ->
             ( model, retrieveCustomersFromServer "" )
 
-        UpdateStock stock ->
-            ( { model | stock = Stock.decode stock }, Cmd.none )
+        GotStockFromServer encodedStock ->
+            let
+                stock =
+                    Stock.decodeFromServer encodedStock
+            in
+            ( { model | stock = stock }, storeStock (Stock.encodeStock stock) )
 
-        UpdateCustomers encodedCustomers ->
+        GotCustomersFromServer encodedCustomers ->
             let
                 customers =
                     Json.Decode.decodeString customersDecoder encodedCustomers |> Result.withDefault []
@@ -362,12 +373,6 @@ mainView model =
                 [ div [ class "level-left" ]
                     [ div [ class "level-item" ]
                         [ h1 [] [ text "Liste des commandes" ]
-                        , case model.selectedCustomer of
-                            Just customer ->
-                                text customer.name
-
-                            Nothing ->
-                                text "Pas de client selectionné"
                         ]
                     ]
                 , div [ class "level-right" ]
@@ -525,8 +530,8 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ Time.every 30000 Tick
-        , updateStock UpdateStock
-        , updateCustomers UpdateCustomers
+        , gotStockFromServer GotStockFromServer
+        , gotCustomersFromServer GotCustomersFromServer
         ]
 
 
@@ -609,6 +614,9 @@ port storeOrders : Json.Encode.Value -> Cmd msg
 port storeCustomers : Json.Encode.Value -> Cmd msg
 
 
+port storeStock : Json.Encode.Value -> Cmd msg
+
+
 port storePassword : String -> Cmd msg
 
 
@@ -618,17 +626,17 @@ port retrieveStockFromServer : String -> Cmd msg
 port retrieveCustomersFromServer : String -> Cmd msg
 
 
-port updateStock : (String -> msg) -> Sub msg
+port gotStockFromServer : (String -> msg) -> Sub msg
 
 
-port updateCustomers : (String -> msg) -> Sub msg
+port gotCustomersFromServer : (String -> msg) -> Sub msg
 
 
 
 ---- PROGRAM ----
 
 
-main : Program ( String, String ) Model Msg
+main : Program Flags Model Msg
 main =
     Browser.element
         { view = view

@@ -1,10 +1,11 @@
-module Stock exposing (Stock, StockItem, decode, empty, viewTableStock)
+module Stock exposing (Stock, StockItem, decodeFromServer, decodeStock, empty, encodeStock, viewTableStock)
 
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (class, colspan)
 import Json.Decode
 import Json.Decode.Pipeline exposing (required)
+import Json.Encode
 import List
 import List.Extra
 import String
@@ -107,19 +108,108 @@ formatToString beerFormat =
             "?"
 
 
+stringToFormat : String -> BeerFormat
+stringToFormat string =
+    case string of
+        "75cl" ->
+            Bottle75
+
+        "33cl" ->
+            Bottle33
+
+        "20L" ->
+            Keg20L
+
+        _ ->
+            NoFormat
+
+
 
 -- Decoders ↓
+
+
+encodeStock : Stock -> Json.Encode.Value
+encodeStock stock =
+    Json.Encode.list encodeStockData (Dict.toList stock)
+
+
+encodeStockData : ( String, StockItem ) -> Json.Encode.Value
+encodeStockData ( beerName, stockItem ) =
+    Json.Encode.object
+        [ ( "name", Json.Encode.string beerName )
+        , ( "items", encodeStockItem stockItem )
+        ]
+
+
+encodeStockItem : List ( BeerFormat, Int ) -> Json.Encode.Value
+encodeStockItem stockItem =
+    Json.Encode.list encodeStockItemData stockItem
+
+
+encodeStockItemData : ( BeerFormat, Int ) -> Json.Encode.Value
+encodeStockItemData ( format, count ) =
+    Json.Encode.object
+        [ ( "format", Json.Encode.string (formatToString format) )
+        , ( "count", Json.Encode.int count )
+        ]
+
+
+transformJsonToStockItem : JsonStock -> ( String, StockItem )
+transformJsonToStockItem jsonStock =
+    ( .name jsonStock
+    , .items jsonStock
+        |> List.map (\x -> ( .format x, .count x ))
+    )
+
+
+decodeStock : String -> Stock
+decodeStock encoded =
+    Json.Decode.decodeString stockListDecoder encoded
+        |> Result.withDefault []
+        |> List.map transformJsonToStockItem
+        |> Dict.fromList
+
+
+type alias JsonStock =
+    { name : String
+    , items : List JsonStockItem
+    }
+
+
+type alias JsonStockItem =
+    { format : BeerFormat
+    , count : Int
+    }
+
+
+stockListDecoder : Json.Decode.Decoder (List JsonStock)
+stockListDecoder =
+    Json.Decode.list stockDecoder
+
+
+stockDecoder : Json.Decode.Decoder JsonStock
+stockDecoder =
+    Json.Decode.succeed JsonStock
+        |> required "name" Json.Decode.string
+        |> required "items" (Json.Decode.list stockItemDecoder)
+
+
+stockItemDecoder : Json.Decode.Decoder JsonStockItem
+stockItemDecoder =
+    Json.Decode.succeed JsonStockItem
+        |> required "format" (Json.Decode.map stringToFormat Json.Decode.string)
+        |> required "count" Json.Decode.int
 
 
 type alias SourceStockFormat =
     { name : String, quantity : Int, format : BeerFormat }
 
 
-decode : String -> Stock
-decode stock =
+decodeFromServer : String -> Stock
+decodeFromServer encoded =
     let
         source =
-            Json.Decode.decodeString stockDecoder stock
+            Json.Decode.decodeString serverStockDecoder encoded
                 |> Result.withDefault []
     in
     source
@@ -127,22 +217,9 @@ decode stock =
         |> Dict.fromList
 
 
-transformSources : SourceStockFormat -> List ( String, StockItem ) -> List ( String, StockItem )
-transformSources { name, format, quantity } =
-    Dict.fromList
-        >> (\dict ->
-                if Dict.member name dict then
-                    Dict.update name (Maybe.map (\v -> ( format, quantity ) :: v)) dict
-
-                else
-                    Dict.insert name [ ( format, quantity ) ] dict
-           )
-        >> Dict.toList
-
-
-stockDecoder : Json.Decode.Decoder (List SourceStockFormat)
-stockDecoder =
-    Json.Decode.list stockItemDecoder
+serverStockDecoder : Json.Decode.Decoder (List SourceStockFormat)
+serverStockDecoder =
+    Json.Decode.list serverStockItemDecoder
 
 
 toBeerFormat : Json.Decode.Decoder BeerFormat
@@ -165,9 +242,22 @@ toBeerFormat =
     Json.Decode.map process Json.Decode.float
 
 
-stockItemDecoder : Json.Decode.Decoder SourceStockFormat
-stockItemDecoder =
+serverStockItemDecoder : Json.Decode.Decoder SourceStockFormat
+serverStockItemDecoder =
     Json.Decode.succeed SourceStockFormat
         |> required "x_beername" Json.Decode.string
         |> required "qty_available" Json.Decode.int
         |> required "x_volume" toBeerFormat
+
+
+transformSources : SourceStockFormat -> List ( String, StockItem ) -> List ( String, StockItem )
+transformSources { name, format, quantity } =
+    Dict.fromList
+        >> (\dict ->
+                if Dict.member name dict then
+                    Dict.update name (Maybe.map (\v -> ( format, quantity ) :: v)) dict
+
+                else
+                    Dict.insert name [ ( format, quantity ) ] dict
+           )
+        >> Dict.toList
