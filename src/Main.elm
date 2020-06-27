@@ -1,9 +1,10 @@
 port module Main exposing (..)
 
 import Browser
+import Browser.Dom exposing (focus)
 import Dict
 import Html exposing (..)
-import Html.Attributes exposing (class, colspan, id, placeholder, src, value)
+import Html.Attributes exposing (attribute, class, colspan, id, list, placeholder, src, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
 import Json.Decode.Pipeline exposing (required)
@@ -12,9 +13,8 @@ import List
 import List.Extra
 import Maybe.Extra exposing (isJust, join, values)
 import Parser exposing ((|.), (|=), Parser, chompWhile, getChompedString, int, run, spaces, succeed, symbol)
-import Select
-import Simple.Fuzzy
 import Stock
+import Task
 import Time
 import Time.Format
 import Time.Format.Config.Config_fr_fr exposing (config)
@@ -22,10 +22,8 @@ import Time.Format.Config.Config_fr_fr exposing (config)
 
 type alias Model =
     { orderInput : String
-    , clientInput : String
-    , selectedCustomerId : Maybe Int
+    , customerInput : String
     , selectedCustomer : Maybe Customer
-    , selectState : Select.State
     , currentDate : Time.Posix
     , editedItemNumber : Maybe Int
     , currentOrder : Maybe Order
@@ -96,9 +94,7 @@ init ( encodedOrders, serverPassword ) =
       , serverPasswordInput = ""
       , stock = Stock.empty
       , customers = []
-      , clientInput = ""
-      , selectState = Select.newState ""
-      , selectedCustomerId = Nothing
+      , customerInput = ""
       , selectedCustomer = Nothing
       }
     , Cmd.none
@@ -111,7 +107,7 @@ init ( encodedOrders, serverPassword ) =
 
 type Msg
     = UpdateInput String
-    | UpdateClientInput String
+    | UpdateCustomerInput String
     | SaveOrder
     | EditOrder Order Int
     | ResetOrders
@@ -122,23 +118,12 @@ type Msg
     | UpdateStock String
     | RetrieveCustomers
     | UpdateCustomers String
-    | OnSelect (Maybe Customer)
-    | SelectMsg (Select.Msg Customer)
+    | NoOp
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        OnSelect maybeCustomer ->
-            ( { model | selectedCustomer = maybeCustomer }, Cmd.none )
-
-        SelectMsg subMsg ->
-            let
-                ( updated, cmd ) =
-                    Select.update selectConfig subMsg model.selectState
-            in
-            ( { model | selectState = updated }, cmd )
-
         UpdateServerPassword content ->
             ( { model
                 | serverPasswordInput = content
@@ -176,9 +161,16 @@ update msg model =
             , Cmd.none
             )
 
-        UpdateClientInput content ->
+        UpdateCustomerInput content ->
+            let
+                selectedCustomer =
+                    model.customers
+                        |> List.filter (\a -> .name a == content)
+                        |> List.head
+            in
             ( { model
-                | clientInput = content
+                | customerInput = content
+                , selectedCustomer = selectedCustomer
               }
             , Cmd.none
             )
@@ -196,6 +188,7 @@ update msg model =
                     | orderInput = stringOrder
                     , editedItemNumber = Just itemNumber
                     , selectedCustomer = Just order.customer
+                    , customerInput = order.customer.name
                 }
 
         SaveOrder ->
@@ -219,8 +212,9 @@ update msg model =
                         , orderInput = ""
                         , editedItemNumber = Nothing
                         , selectedCustomer = Nothing
+                        , customerInput = ""
                       }
-                    , storeOrders (encodeOrders orders)
+                    , Cmd.batch [ storeOrders (encodeOrders orders), Task.attempt (\_ -> NoOp) (focus "customer") ]
                     )
 
                 Nothing ->
@@ -244,6 +238,9 @@ update msg model =
                     Json.Decode.decodeString customersDecoder encodedCustomers |> Result.withDefault []
             in
             ( { model | customers = customers }, storeCustomers (encodeCustomers customers) )
+
+        NoOp ->
+            ( model, Cmd.none )
 
 
 parseItems : Maybe String -> List OrderLine
@@ -285,17 +282,6 @@ orderline =
         |= int
         |= (getChompedString <| chompWhile Char.isUpper)
         |= int
-
-
-fuzzyFilter : Int -> (a -> String) -> String -> List a -> Maybe (List a)
-fuzzyFilter minChars toLabel query items =
-    if String.length query < minChars then
-        Nothing
-
-    else
-        items
-            |> Simple.Fuzzy.filter toLabel query
-            |> Just
 
 
 
@@ -376,6 +362,12 @@ mainView model =
                 [ div [ class "level-left" ]
                     [ div [ class "level-item" ]
                         [ h1 [] [ text "Liste des commandes" ]
+                        , case model.selectedCustomer of
+                            Just customer ->
+                                text customer.name
+
+                            Nothing ->
+                                text "Pas de client selectionné"
                         ]
                     ]
                 , div [ class "level-right" ]
@@ -516,39 +508,13 @@ viewColumnsForBeers beerNames orders =
 customerInputView : Model -> Html Msg
 customerInputView model =
     let
-        selectedCustomers : List Customer
-        selectedCustomers =
-            case model.selectedCustomerId of
-                Nothing ->
-                    []
-
-                Just id ->
-                    List.filter (\customer -> customer.id == id) model.customers
-
-        select =
-            Select.view
-                selectConfig
-                model.selectState
-                model.customers
-                selectedCustomers
+        getOption customer =
+            option [ value customer.name ] [ customer.name |> text ]
     in
-    Html.map SelectMsg select
-
-
-selectConfig : Select.Config Msg Customer
-selectConfig =
-    Select.newConfig
-        { onSelect = OnSelect
-        , toLabel = .name
-        , filter = fuzzyFilter 2 .name
-        }
-        |> Select.withNotFound "Aucun client correspondant"
-        |> Select.withInputWrapperClass "customer-input"
-        |> Select.withItemClass "customer-menu-item"
-        |> Select.withMenuClass "customer-menu"
-        |> Select.withHighlightedItemClass "item-higlighted"
-        |> Select.withPrompt "Nom dula client⋅e"
-        |> Select.withUnderlineClass "underline"
+    div []
+        [ input [ id "customer", list "customers", class "customer-input", onInput UpdateCustomerInput, value model.customerInput ] []
+        , datalist [ id "customers" ] (List.map getOption model.customers)
+        ]
 
 
 
