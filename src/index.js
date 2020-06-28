@@ -38,6 +38,10 @@ app.ports.retrieveCustomersFromServer.subscribe(function (useless) {
   getCustomers();
 });
 
+app.ports.createOrdersOnServer.subscribe(function(orders) {
+  orders.forEach(createOrder);
+});
+
 // If you want your app to work offline and load faster, you can change
 // unregister() to register() below. Note this comes with some pitfalls.
 // Learn more about service workers: https://bit.ly/CRA-PWA
@@ -80,6 +84,32 @@ function getCustomers() {
         {'fields': ['name']}
       ], function(err, items) {
         app.ports.gotCustomersFromServer.send(JSON.stringify(items));
+      });
+    });
+}
+
+function createOrder(order) {
+  console.log("create order", order);
+
+}
+
+function fakeCreateOrder(){
+  odoo.connect(function (err) {
+    if (err) { return console.log(err); }
+
+    odoo.execute_kw(
+      'sale.order',
+      'create',
+      [{
+          'partner_id': 342 // A Cantina.
+        , 'order_line': [
+          (0,0, {'product_id': 2})
+        ]
+      }
+        [customer],
+        {}
+      ], function(err, items) {
+        console.log("Got return from odoo when creating an order", err, items)
       });
     });
 }

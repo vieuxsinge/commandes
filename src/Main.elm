@@ -125,6 +125,7 @@ type Msg
     | GotStockFromServer String
     | RetrieveCustomers
     | GotCustomersFromServer String
+    | CreateOrdersOnServer
     | NoOp
 
 
@@ -249,6 +250,9 @@ update msg model =
                     Json.Decode.decodeString customersDecoder encodedCustomers |> Result.withDefault []
             in
             ( { model | customers = customers }, storeCustomers (encodeCustomers customers) )
+
+        CreateOrdersOnServer ->
+            ( model, createOrdersOnServer (encodeOrders model.orders) )
 
         NoOp ->
             ( model, Cmd.none )
@@ -376,9 +380,7 @@ mainView model =
                         ]
                     ]
                 , div [ class "level-right" ]
-                    [ p [ class "level-item", onClick ResetOrders ] [ text "reset" ]
-                    , p [ class "level-item", onClick RetrieveStock ] [ text "récup le stock !" ]
-                    , p [ class "level-item", onClick RetrieveCustomers ] [ text "get customers" ]
+                    [ p [ class "level-item", onClick CreateOrdersOnServer ] [ text "créer les bons de commande" ]
                     ]
                 ]
             , div [ class "columns" ]
@@ -630,6 +632,9 @@ port gotStockFromServer : (String -> msg) -> Sub msg
 
 
 port gotCustomersFromServer : (String -> msg) -> Sub msg
+
+
+port createOrdersOnServer : Json.Encode.Value -> Cmd msg
 
 
 
