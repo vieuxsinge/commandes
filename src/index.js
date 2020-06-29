@@ -39,7 +39,8 @@ app.ports.retrieveCustomersFromServer.subscribe(function (useless) {
 });
 
 app.ports.createOrdersOnServer.subscribe(function(orders) {
-  orders.forEach(createOrder);
+  fakeCreateOrder();
+  //orders.forEach(createOrder);
 });
 
 // If you want your app to work offline and load faster, you can change
@@ -60,11 +61,11 @@ function getStockFromOdoo() {
     if (err) { return console.log(err); }
 
     odoo.execute_kw(
-      'product.template',
+      'product.product',
       'search_read',
       [
         [[['x_volume', '>=', '0.1']]],
-        {'fields': ['x_beername', 'qty_available', 'x_volume']}
+        {'fields': ['x_beername', 'qty_available', 'x_volume', 'name']}
       ], function(err, items) {
         console.log(items);
         app.ports.gotStockFromServer.send(JSON.stringify(items));
@@ -94,8 +95,47 @@ function createOrder(order) {
 }
 
 function fakeCreateOrder(){
+
   odoo.connect(function (err) {
     if (err) { return console.log(err); }
+
+    var inParams = [];
+    inParams.push({
+      partner_id: 357
+    });
+    console.log(inParams);
+    var params = [];
+    params.push(inParams);
+    odoo.execute_kw('sale.order', 'create', params, function (
+      err,
+      value,
+    ) {
+      if (err) {
+        return console.log(err);
+      }
+      console.log('Result: ', value);
+      var inParams = [];
+      inParams.push({
+        order_id: value,
+        product_id: 3,
+        product_uom_qty: 10
+      });
+      console.log(inParams);
+      var params = [];
+      params.push(inParams);
+      odoo.execute_kw(
+        'sale.order.line',
+        'create',
+        params,
+        function (err, value) {
+          if (err) {
+            return console.log(err);
+          }
+          console.log('Result: ', value);
+        },
+      );
+    });
+
 
     odoo.execute_kw(
       'sale.order',
@@ -103,11 +143,9 @@ function fakeCreateOrder(){
       [{
           'partner_id': 342 // A Cantina.
         , 'order_line': [
-          (0,0, {'product_id': 2})
+          [0,0, {'product_id': 116, 'product_uom_qty': 10}]
         ]
       }
-        [customer],
-        {}
       ], function(err, items) {
         console.log("Got return from odoo when creating an order", err, items)
       });

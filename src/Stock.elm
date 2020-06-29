@@ -19,51 +19,58 @@ type BeerFormat
 
 
 type alias Stock =
-    Dict String StockItem
+    Dict String (List StockItem)
 
 
 type alias StockItem =
-    List ( BeerFormat, Int )
+    { format : BeerFormat
+    , count : Int
+    , id : Int
+    }
 
 
 empty =
     Dict.empty
 
 
-asBoxes : ( BeerFormat, Int ) -> Int
-asBoxes ( format, quantity ) =
-    case format of
+asBoxes : StockItem -> Int
+asBoxes item =
+    case item.format of
         Bottle75 ->
-            quantity // 12
+            item.count // 12
 
         Bottle33 ->
-            quantity // 24
+            item.count // 24
 
         Keg20L ->
-            quantity
+            item.count
 
         NoFormat ->
             0
 
 
-hasStock : ( String, StockItem ) -> Bool
-hasStock ( string, stockItem ) =
-    stockItem
-        |> List.map Tuple.second
+hasStock : ( String, List StockItem ) -> Bool
+hasStock ( string, items ) =
+    items
+        |> List.map .count
         |> List.sum
         |> (<=) 1
 
 
-viewStockForBeer : ( String, StockItem ) -> Html msg
-viewStockForBeer ( beerName, stockItem ) =
+viewStockForBeer : ( String, List StockItem ) -> Html msg
+viewStockForBeer ( beerName, items ) =
     let
         getFormat format =
-            List.filter (\item -> Tuple.first item == format) stockItem
+            List.filter (\item -> .format item == format) items
                 |> List.head
-                |> Maybe.withDefault ( NoFormat, 0 )
 
-        asStock =
-            asBoxes >> String.fromInt >> text
+        asStock item =
+            case item of
+                Just a ->
+                    asBoxes a |> String.fromInt |> text
+
+                Nothing ->
+                    text "-"
     in
     tr []
         [ td [] [ text beerName ]
@@ -133,32 +140,33 @@ encodeStock stock =
     Json.Encode.list encodeStockData (Dict.toList stock)
 
 
-encodeStockData : ( String, StockItem ) -> Json.Encode.Value
-encodeStockData ( beerName, stockItem ) =
+encodeStockData : ( String, List StockItem ) -> Json.Encode.Value
+encodeStockData ( beerName, items ) =
     Json.Encode.object
         [ ( "name", Json.Encode.string beerName )
-        , ( "items", encodeStockItem stockItem )
+        , ( "items", encodeStockItem items )
         ]
 
 
-encodeStockItem : List ( BeerFormat, Int ) -> Json.Encode.Value
+encodeStockItem : List StockItem -> Json.Encode.Value
 encodeStockItem stockItem =
     Json.Encode.list encodeStockItemData stockItem
 
 
-encodeStockItemData : ( BeerFormat, Int ) -> Json.Encode.Value
-encodeStockItemData ( format, count ) =
+encodeStockItemData : StockItem -> Json.Encode.Value
+encodeStockItemData { id, format, count } =
     Json.Encode.object
         [ ( "format", Json.Encode.string (formatToString format) )
         , ( "count", Json.Encode.int count )
+        , ( "id", Json.Encode.int id )
         ]
 
 
-transformJsonToStockItem : JsonStock -> ( String, StockItem )
+transformJsonToStockItem : JsonStock -> ( String, List StockItem )
 transformJsonToStockItem jsonStock =
     ( .name jsonStock
     , .items jsonStock
-        |> List.map (\x -> ( .format x, .count x ))
+        |> List.map (\x -> StockItem x.format x.count x.id)
     )
 
 
@@ -177,7 +185,8 @@ type alias JsonStock =
 
 
 type alias JsonStockItem =
-    { format : BeerFormat
+    { id : Int
+    , format : BeerFormat
     , count : Int
     }
 
@@ -197,12 +206,13 @@ stockDecoder =
 stockItemDecoder : Json.Decode.Decoder JsonStockItem
 stockItemDecoder =
     Json.Decode.succeed JsonStockItem
+        |> required "id" Json.Decode.int
         |> required "format" (Json.Decode.map stringToFormat Json.Decode.string)
         |> required "count" Json.Decode.int
 
 
 type alias SourceStockFormat =
-    { name : String, quantity : Int, format : BeerFormat }
+    { id : Int, name : String, quantity : Int, format : BeerFormat }
 
 
 decodeFromServer : String -> Stock
@@ -210,6 +220,7 @@ decodeFromServer encoded =
     let
         source =
             Json.Decode.decodeString serverStockDecoder encoded
+                |> Debug.log "decodedString from server"
                 |> Result.withDefault []
     in
     source
@@ -245,19 +256,20 @@ toBeerFormat =
 serverStockItemDecoder : Json.Decode.Decoder SourceStockFormat
 serverStockItemDecoder =
     Json.Decode.succeed SourceStockFormat
+        |> required "id" Json.Decode.int
         |> required "x_beername" Json.Decode.string
         |> required "qty_available" Json.Decode.int
         |> required "x_volume" toBeerFormat
 
 
-transformSources : SourceStockFormat -> List ( String, StockItem ) -> List ( String, StockItem )
-transformSources { name, format, quantity } =
+transformSources : SourceStockFormat -> List ( String, List StockItem ) -> List ( String, List StockItem )
+transformSources { id, name, format, quantity } =
     Dict.fromList
         >> (\dict ->
                 if Dict.member name dict then
-                    Dict.update name (Maybe.map (\v -> ( format, quantity ) :: v)) dict
+                    Dict.update name (Maybe.map (\v -> { format = format, count = quantity, id = id } :: v)) dict
 
                 else
-                    Dict.insert name [ ( format, quantity ) ] dict
+                    Dict.insert name [ { format = format, count = quantity, id = id } ] dict
            )
         >> Dict.toList
