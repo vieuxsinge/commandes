@@ -39,8 +39,9 @@ app.ports.retrieveCustomersFromServer.subscribe(function (useless) {
 });
 
 app.ports.createOrdersOnServer.subscribe(function(orders) {
-  fakeCreateOrder();
-  //orders.forEach(createOrder);
+  // fakeCreateOrder();
+  // orders.forEach(createOrder);
+  console.log(orders);
 });
 
 // If you want your app to work offline and load faster, you can change
@@ -65,7 +66,7 @@ function getStockFromOdoo() {
       'search_read',
       [
         [[['x_volume', '>=', '0.1']]],
-        {'fields': ['x_beername', 'qty_available', 'x_volume', 'name']}
+        {'fields': ['x_beername', 'qty_available', 'x_volume', 'name', 'default_code']}
       ], function(err, items) {
         console.log(items);
         app.ports.gotStockFromServer.send(JSON.stringify(items));

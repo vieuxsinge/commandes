@@ -14,6 +14,7 @@ import List.Extra
 import Maybe.Extra exposing (isJust, join, values)
 import Parser exposing ((|.), (|=), Parser, chompWhile, getChompedString, int, run, spaces, succeed, symbol)
 import Stock
+import String.Extra
 import Task
 import Time
 import Time.Format
@@ -37,8 +38,7 @@ type alias Model =
 
 type alias OrderLine =
     { quantity : Int
-    , beer : String
-    , format : Int
+    , beer : Stock.StockItem
     }
 
 
@@ -159,7 +159,7 @@ update msg model =
                 order =
                     Order
                         customer
-                        (parseItems (Just content))
+                        (parseItems (Just content) (model.stock |> Dict.values |> List.concat))
                         model.currentDate
             in
             ( { model
@@ -258,17 +258,40 @@ update msg model =
             ( model, Cmd.none )
 
 
-parseItems : Maybe String -> List OrderLine
-parseItems stringItems =
-    case stringItems of
+parseItems : Maybe String -> List Stock.StockItem -> List OrderLine
+parseItems text items =
+    case text of
         Nothing ->
             []
 
         Just string ->
             String.split "," string
                 |> List.map String.trim
-                |> List.map (\x -> run orderline x |> Result.toMaybe)
+                |> List.map (toOrderLine items)
                 |> List.filterMap identity
+
+
+toOrderLine : List Stock.StockItem -> String -> Maybe OrderLine
+toOrderLine stockItems query =
+    let
+        stockItem =
+            List.Extra.find (\x -> String.contains x.code query) stockItems
+
+        quantity =
+            case stockItem of
+                Just a ->
+                    String.Extra.leftOf a.code query
+                        |> String.toInt
+                        |> Maybe.withDefault 0
+
+                Nothing ->
+                    0
+    in
+    if Maybe.Extra.isJust stockItem && (quantity > 0) then
+        Just { quantity = quantity, beer = stockItem |> Maybe.withDefault Stock.nullStockItem }
+
+    else
+        Nothing
 
 
 orderToString : Order -> String
@@ -278,76 +301,48 @@ orderToString order =
             String.join ", " <|
                 List.map
                     (\x ->
-                        (.quantity x |> String.fromInt)
-                            ++ .beer x
-                            ++ (.format x |> String.fromInt)
+                        (x.quantity |> String.fromInt)
+                            ++ x.beer.code
                     )
                     order.lines
     in
     orders
 
 
-
--- Parses "2xST33"
-
-
-orderline : Parser OrderLine
-orderline =
-    succeed OrderLine
-        |= int
-        |= (getChompedString <| chompWhile Char.isUpper)
-        |= int
-
-
-
----- VIEW ----
-
-
-displayBeerName : String -> String
-displayBeerName str =
-    case str of
-        "ST" ->
-            "Souffle Tropical"
-
-        "NM" ->
-            "Nouveau Monde"
-
-        "EQD" ->
-            "L'Eau Qui Dort"
-
-        "EPT" ->
-            "En Pleine Tempête"
-
-        beername ->
-            beername
-
-
-getBeers : List Order -> List String
-getBeers orders =
-    orders |> List.map .lines |> List.concat |> List.map .beer |> List.Extra.unique
-
-
-getBeerFromOrder : String -> List OrderLine -> Maybe OrderLine
-getBeerFromOrder beerName lines =
-    List.filter (\x -> .beer x == beerName) lines |> List.head
-
-
 viewOrderLine : OrderLine -> Html Msg
-viewOrderLine orderLine =
-    li [] [ text (displayBeerName orderLine.beer ++ " " ++ String.fromInt orderLine.format ++ " x " ++ String.fromInt orderLine.quantity) ]
-
-
-viewOrder : Order -> Html Msg
-viewOrder order =
-    div []
-        [ div [] [ text order.customer.name ]
-        , ul [] (List.map viewOrderLine order.lines)
+viewOrderLine line =
+    li []
+        [ text
+            (String.fromInt line.quantity
+                ++ " × "
+                ++ line.beer.name
+                ++ " "
+                ++ Stock.formatToString line.beer.format
+            )
         ]
 
 
-viewBeerList : List String -> Html Msg
-viewBeerList beers =
-    ul [] (List.map (\b -> li [] [ displayBeerName b |> text ]) beers)
+viewOrder : Int -> Order -> Html Msg
+viewOrder itemNumber order =
+    article
+        [ class "media" ]
+        [ div
+            [ class "media-content" ]
+            [ div
+                [ class "content", onClick (EditOrder order itemNumber) ]
+                [ p
+                    []
+                    [ strong
+                        []
+                        [ text order.customer.name ]
+                    , br
+                        []
+                        []
+                    , ul [] (List.map viewOrderLine order.lines)
+                    ]
+                ]
+            ]
+        ]
 
 
 view : Model -> Html Msg
@@ -407,109 +402,21 @@ mainView model =
                         ]
                     ]
                 , div [ class "column current-order" ]
-                    [ case model.currentOrder of
-                        Just order ->
-                            viewOrder order
-
-                        Nothing ->
-                            text ""
-                    , viewTableOrders model.orders
+                    [ viewOrders model.orders
                     ]
                 ]
             ]
         ]
 
 
-viewTableOrders : List Order -> Html Msg
-viewTableOrders orders =
-    let
-        beerNames =
-            getBeers orders
-
-        headers =
-            List.foldr (::) (List.map displayBeerName beerNames) [ "Date", "Client" ]
-
-        lines =
-            viewSums beerNames orders
-                :: List.indexedMap (viewLine beerNames) orders
-    in
+viewOrders : List Order -> Html Msg
+viewOrders orders =
     case orders of
         [] ->
-            p [] [ text "" ]
+            p [] [ text "Pas de commande enregistrée." ]
 
         items ->
-            table [ class "table" ]
-                [ thead []
-                    [ tr [] (List.map (\h -> th [] [ text h ]) headers)
-                    ]
-                , tbody [] lines
-                ]
-
-
-viewSums : List String -> List Order -> Html Msg
-viewSums beerNames orders =
-    let
-        headers =
-            [ td [] [ text "Totaux" ]
-            , td [] []
-            ]
-
-        sumCell amount =
-            td [] [ String.fromInt amount |> text ]
-
-        cells =
-            List.map (getSum orders) beerNames
-                |> List.map sumCell
-    in
-    tr [ class "totaux" ] (List.foldr (::) cells headers)
-
-
-getSum : List Order -> String -> Int
-getSum orders beerName =
-    List.map .lines orders
-        |> List.concat
-        |> List.filter (\x -> .beer x == beerName)
-        |> List.map .quantity
-        |> List.sum
-
-
-viewLine : List String -> Int -> Order -> Html Msg
-viewLine beerNames itemNumber order =
-    let
-        orderInfo =
-            [ th []
-                [ text
-                    (Time.Format.format
-                        config
-                        "%-d %B"
-                        Time.utc
-                        order.date
-                    )
-                ]
-            , th [] [ text order.customer.name ]
-            ]
-
-        columns =
-            List.foldr (::) (viewColumnsForBeers beerNames order.lines) orderInfo
-    in
-    tr [ onClick (EditOrder order itemNumber) ] columns
-
-
-viewColumnsForBeers : List String -> List OrderLine -> List (Html Msg)
-viewColumnsForBeers beerNames orders =
-    let
-        filteredOrders =
-            List.map (\beerName -> getBeerFromOrder beerName orders) beerNames
-
-        getLine order =
-            case order of
-                Just o ->
-                    td [] [ .quantity o |> String.fromInt |> text ]
-
-                Nothing ->
-                    td [] []
-    in
-    List.map getLine filteredOrders
+            ul [ class "orders" ] (List.indexedMap viewOrder orders)
 
 
 customerInputView : Model -> Html Msg
@@ -559,8 +466,7 @@ encodeOrderLine : OrderLine -> Json.Encode.Value
 encodeOrderLine orderLine =
     Json.Encode.object
         [ ( "quantity", Json.Encode.int orderLine.quantity )
-        , ( "beer", Json.Encode.string orderLine.beer )
-        , ( "format", Json.Encode.int orderLine.format )
+        , ( "beer", Stock.encodeStockItemData orderLine.beer )
         ]
 
 
@@ -581,8 +487,7 @@ orderLineDecoder : Json.Decode.Decoder OrderLine
 orderLineDecoder =
     Json.Decode.succeed OrderLine
         |> required "quantity" Json.Decode.int
-        |> required "beer" Json.Decode.string
-        |> required "format" Json.Decode.int
+        |> required "beer" Stock.stockItemDecoder
 
 
 customersDecoder : Json.Decode.Decoder (List Customer)

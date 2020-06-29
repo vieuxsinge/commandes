@@ -1,4 +1,4 @@
-module Stock exposing (Stock, StockItem, decodeFromServer, decodeStock, empty, encodeStock, viewTableStock)
+module Stock exposing (..)
 
 import Dict exposing (Dict)
 import Html exposing (..)
@@ -23,10 +23,16 @@ type alias Stock =
 
 
 type alias StockItem =
-    { format : BeerFormat
+    { id : Int
+    , format : BeerFormat
     , count : Int
-    , id : Int
+    , code : String
+    , name : String
     }
+
+
+nullStockItem =
+    StockItem 0 NoFormat 0 "" ""
 
 
 empty =
@@ -67,7 +73,16 @@ viewStockForBeer ( beerName, items ) =
         asStock item =
             case item of
                 Just a ->
-                    asBoxes a |> String.fromInt |> text
+                    let
+                        number =
+                            asBoxes a
+                    in
+                    case number of
+                        0 ->
+                            text "-"
+
+                        _ ->
+                            String.fromInt number |> text
 
                 Nothing ->
                     text "-"
@@ -154,11 +169,13 @@ encodeStockItem stockItem =
 
 
 encodeStockItemData : StockItem -> Json.Encode.Value
-encodeStockItemData { id, format, count } =
+encodeStockItemData { id, format, count, code, name } =
     Json.Encode.object
         [ ( "format", Json.Encode.string (formatToString format) )
         , ( "count", Json.Encode.int count )
         , ( "id", Json.Encode.int id )
+        , ( "code", Json.Encode.string code )
+        , ( "name", Json.Encode.string name )
         ]
 
 
@@ -166,7 +183,15 @@ transformJsonToStockItem : JsonStock -> ( String, List StockItem )
 transformJsonToStockItem jsonStock =
     ( .name jsonStock
     , .items jsonStock
-        |> List.map (\x -> StockItem x.format x.count x.id)
+        |> List.map
+            (\x ->
+                { id = x.id
+                , format = x.format
+                , count = x.count
+                , code = x.code
+                , name = x.name
+                }
+            )
     )
 
 
@@ -188,6 +213,8 @@ type alias JsonStockItem =
     { id : Int
     , format : BeerFormat
     , count : Int
+    , code : String
+    , name : String
     }
 
 
@@ -209,10 +236,12 @@ stockItemDecoder =
         |> required "id" Json.Decode.int
         |> required "format" (Json.Decode.map stringToFormat Json.Decode.string)
         |> required "count" Json.Decode.int
+        |> required "code" Json.Decode.string
+        |> required "name" Json.Decode.string
 
 
 type alias SourceStockFormat =
-    { id : Int, name : String, quantity : Int, format : BeerFormat }
+    { id : Int, name : String, count : Int, format : BeerFormat, code : String }
 
 
 decodeFromServer : String -> Stock
@@ -260,16 +289,37 @@ serverStockItemDecoder =
         |> required "x_beername" Json.Decode.string
         |> required "qty_available" Json.Decode.int
         |> required "x_volume" toBeerFormat
+        |> required "default_code" Json.Decode.string
 
 
 transformSources : SourceStockFormat -> List ( String, List StockItem ) -> List ( String, List StockItem )
-transformSources { id, name, format, quantity } =
+transformSources { id, name, format, count, code } =
     Dict.fromList
         >> (\dict ->
                 if Dict.member name dict then
-                    Dict.update name (Maybe.map (\v -> { format = format, count = quantity, id = id } :: v)) dict
+                    Dict.update name
+                        (Maybe.map
+                            (\v ->
+                                { format = format
+                                , count = count
+                                , id = id
+                                , code = code
+                                , name = name
+                                }
+                                    :: v
+                            )
+                        )
+                        dict
 
                 else
-                    Dict.insert name [ { format = format, count = quantity, id = id } ] dict
+                    Dict.insert name
+                        [ { format = format
+                          , count = count
+                          , id = id
+                          , code = code
+                          , name = name
+                          }
+                        ]
+                        dict
            )
         >> Dict.toList
