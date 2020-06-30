@@ -291,12 +291,18 @@ toOrderLine stockItems query =
                     String.Extra.leftOf a.code query
                         |> String.toInt
                         |> Maybe.withDefault 0
+                        |> Stock.convertToUnits a.format
 
                 Nothing ->
                     0
     in
     if Maybe.Extra.isJust stockItem && (quantity > 0) then
-        Just { quantity = quantity, beer = stockItem |> Maybe.withDefault Stock.nullStockItem }
+        Just
+            { quantity = quantity
+            , beer =
+                stockItem
+                    |> Maybe.withDefault Stock.nullStockItem
+            }
 
     else
         Nothing
@@ -308,9 +314,11 @@ orderToString order =
         orders =
             String.join ", " <|
                 List.map
-                    (\x ->
-                        (x.quantity |> String.fromInt)
-                            ++ x.beer.code
+                    (\line ->
+                        (Stock.convertToBoxes line.beer.format line.quantity
+                            |> String.fromInt
+                        )
+                            ++ line.beer.code
                     )
                     order.lines
     in

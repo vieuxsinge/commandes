@@ -39,9 +39,7 @@ app.ports.retrieveCustomersFromServer.subscribe(function (useless) {
 });
 
 app.ports.createOrdersOnServer.subscribe(function(orders) {
-  // fakeCreateOrder();
-  // orders.forEach(createOrder);
-  console.log(orders);
+  orders.forEach(createSaleOrder);
 });
 
 // If you want your app to work offline and load faster, you can change
@@ -95,60 +93,40 @@ function createOrder(order) {
 
 }
 
-function fakeCreateOrder(){
+function createSaleOrder(order){
 
   odoo.connect(function (err) {
     if (err) { return console.log(err); }
 
-    var inParams = [];
-    inParams.push({
-      partner_id: 357
+    odoo.execute_kw(
+      'sale.order',
+      'create',
+      [[{ partner_id: order.customer.id }]],
+      function (err, serverOrderId) {
+        if (err) {
+          return console.log(err);
+        }
+        order.orders.forEach((line) => {
+          createSaleOrderLine(serverOrderId, line);
+        });
+      });
     });
-    console.log(inParams);
-    var params = [];
-    params.push(inParams);
-    odoo.execute_kw('sale.order', 'create', params, function (
-      err,
-      value,
-    ) {
+}
+
+function createSaleOrderLine(orderId, line) {
+  odoo.execute_kw(
+    'sale.order.line',
+    'create',
+    [[{
+      order_id: orderId,
+      product_id: line.beer.id,
+      product_uom_qty: line.quantity
+    }]],
+    function (err, value) {
       if (err) {
         return console.log(err);
       }
       console.log('Result: ', value);
-      var inParams = [];
-      inParams.push({
-        order_id: value,
-        product_id: 3,
-        product_uom_qty: 10
-      });
-      console.log(inParams);
-      var params = [];
-      params.push(inParams);
-      odoo.execute_kw(
-        'sale.order.line',
-        'create',
-        params,
-        function (err, value) {
-          if (err) {
-            return console.log(err);
-          }
-          console.log('Result: ', value);
-        },
-      );
-    });
-
-
-    odoo.execute_kw(
-      'sale.order',
-      'create',
-      [{
-          'partner_id': 342 // A Cantina.
-        , 'order_line': [
-          [0,0, {'product_id': 116, 'product_uom_qty': 10}]
-        ]
-      }
-      ], function(err, items) {
-        console.log("Got return from odoo when creating an order", err, items)
-      });
-    });
+    },
+  );
 }

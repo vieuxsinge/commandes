@@ -25,7 +25,7 @@ type alias Stock =
 type alias StockItem =
     { id : Int
     , format : BeerFormat
-    , count : Int
+    , available : Int
     , code : String
     , name : String
     }
@@ -39,26 +39,42 @@ empty =
     Dict.empty
 
 
-asBoxes : StockItem -> Int
-asBoxes item =
-    case item.format of
+convertToBoxes : BeerFormat -> Int -> Int
+convertToBoxes format number =
+    case format of
         Bottle75 ->
-            item.count // 12
+            number // 12
 
         Bottle33 ->
-            item.count // 24
+            number // 24
 
         Keg20L ->
-            item.count
+            number
 
         NoFormat ->
             0
 
 
+convertToUnits : BeerFormat -> Int -> Int
+convertToUnits format number =
+    case format of
+        Bottle75 ->
+            number * 12
+
+        Bottle33 ->
+            number * 24
+
+        Keg20L ->
+            number
+
+        NoFormat ->
+            number
+
+
 hasStock : ( String, List StockItem ) -> Bool
 hasStock ( string, items ) =
     items
-        |> List.map .count
+        |> List.map .available
         |> List.sum
         |> (<=) 1
 
@@ -74,15 +90,15 @@ viewStockForBeer ( beerName, items ) =
             case item of
                 Just a ->
                     let
-                        number =
-                            asBoxes a
+                        available =
+                            convertToBoxes a.format a.available
                     in
-                    case number of
+                    case available of
                         0 ->
                             text "-"
 
                         _ ->
-                            String.fromInt number |> text
+                            String.fromInt available |> text
 
                 Nothing ->
                     text "-"
@@ -169,10 +185,10 @@ encodeStockItem stockItem =
 
 
 encodeStockItemData : StockItem -> Json.Encode.Value
-encodeStockItemData { id, format, count, code, name } =
+encodeStockItemData { id, format, available, code, name } =
     Json.Encode.object
         [ ( "format", Json.Encode.string (formatToString format) )
-        , ( "count", Json.Encode.int count )
+        , ( "available", Json.Encode.int available )
         , ( "id", Json.Encode.int id )
         , ( "code", Json.Encode.string code )
         , ( "name", Json.Encode.string name )
@@ -187,7 +203,7 @@ transformJsonToStockItem jsonStock =
             (\x ->
                 { id = x.id
                 , format = x.format
-                , count = x.count
+                , available = x.available
                 , code = x.code
                 , name = x.name
                 }
@@ -212,7 +228,7 @@ type alias JsonStock =
 type alias JsonStockItem =
     { id : Int
     , format : BeerFormat
-    , count : Int
+    , available : Int
     , code : String
     , name : String
     }
@@ -235,13 +251,13 @@ stockItemDecoder =
     Json.Decode.succeed JsonStockItem
         |> required "id" Json.Decode.int
         |> required "format" (Json.Decode.map stringToFormat Json.Decode.string)
-        |> required "count" Json.Decode.int
+        |> required "available" Json.Decode.int
         |> required "code" Json.Decode.string
         |> required "name" Json.Decode.string
 
 
 type alias SourceStockFormat =
-    { id : Int, name : String, count : Int, format : BeerFormat, code : String }
+    { id : Int, name : String, available : Int, format : BeerFormat, code : String }
 
 
 decodeFromServer : String -> Stock
@@ -293,7 +309,7 @@ serverStockItemDecoder =
 
 
 transformSources : SourceStockFormat -> List ( String, List StockItem ) -> List ( String, List StockItem )
-transformSources { id, name, format, count, code } =
+transformSources { id, name, format, available, code } =
     Dict.fromList
         >> (\dict ->
                 if Dict.member name dict then
@@ -301,7 +317,7 @@ transformSources { id, name, format, count, code } =
                         (Maybe.map
                             (\v ->
                                 { format = format
-                                , count = count
+                                , available = available
                                 , id = id
                                 , code = code
                                 , name = name
@@ -314,7 +330,7 @@ transformSources { id, name, format, count, code } =
                 else
                     Dict.insert name
                         [ { format = format
-                          , count = count
+                          , available = available
                           , id = id
                           , code = code
                           , name = name
