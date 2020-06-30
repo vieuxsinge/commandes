@@ -38,15 +38,11 @@ app.ports.retrieveCustomersFromServer.subscribe(function (useless) {
   getCustomers();
 });
 
-app.ports.createOrdersOnServer.subscribe(function(orders) {
-  orders.forEach(createSaleOrder);
+app.ports.createOrdersOnServer.subscribe(async function(orders) {
+  orders.forEach(await createSaleOrder);
 });
 
-// If you want your app to work offline and load faster, you can change
-// unregister() to register() below. Note this comes with some pitfalls.
-// Learn more about service workers: https://bit.ly/CRA-PWA
 serviceWorker.unregister();
-
 
 var odoo = new Odoo({
     url: "https://odooproxy.vieuxsinge.com/xmlrpc/2",
@@ -54,6 +50,18 @@ var odoo = new Odoo({
     username: "contact@vieuxsinge.com",
     password: localStorage.getItem("odooPassword")
 });
+
+const callOdoo = (model, method, params) => {
+  return new Promise((resolve, reject) => {
+    odoo.connect((err) => {
+      if (err) reject(new Error(err));
+      odoo.execute_kw(model, method, params, (err, value) => {
+        if (err) reject(new Error(err));
+          resolve(value);
+      });
+    });
+  });
+}
 
 function getStockFromOdoo() {
   odoo.connect(function (err) {
@@ -88,45 +96,20 @@ function getCustomers() {
     });
 }
 
-function createOrder(order) {
-  console.log("create order", order);
-
-}
-
-function createSaleOrder(order){
-
-  odoo.connect(function (err) {
-    if (err) { return console.log(err); }
-
-    odoo.execute_kw(
-      'sale.order',
-      'create',
-      [[{ partner_id: order.customer.id }]],
-      function (err, serverOrderId) {
-        if (err) {
-          return console.log(err);
-        }
-        order.orders.forEach((line) => {
-          createSaleOrderLine(serverOrderId, line);
-        });
-      });
-    });
-}
-
-function createSaleOrderLine(orderId, line) {
-  odoo.execute_kw(
-    'sale.order.line',
+async function createSaleOrder(order){
+  let orderId = await callOdoo(
+    'sale.order',
     'create',
-    [[{
-      order_id: orderId,
-      product_id: line.beer.id,
-      product_uom_qty: line.quantity
-    }]],
-    function (err, value) {
-      if (err) {
-        return console.log(err);
-      }
-      console.log('Result: ', value);
-    },
+    [[{ partner_id: order.customer.id }]]
   );
+  order.orders.forEach(async (line) => {
+    await callOdoo(
+      'sale.order.line',
+      'create',
+      [[{
+        order_id: orderId,
+        product_id: line.beer.id,
+        product_uom_qty: line.quantity
+      }]]);
+  });
 }
