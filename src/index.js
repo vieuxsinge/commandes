@@ -5,6 +5,15 @@ import AwaitLock from 'await-lock';
 import { Elm } from "./Main.elm";
 import * as serviceWorker from "./serviceWorker";
 
+const crypto = window.crypto || window.msCrypto;
+
+const getRandomInts = (n) => {
+    const randInts = new Uint32Array(n);
+    crypto.getRandomValues(randInts);
+    return Array.from(randInts);
+};
+const randInts = getRandomInts(5);
+
 var app = Elm.Main.init({
   node: document.getElementById("root"),
   flags: {
@@ -12,6 +21,7 @@ var app = Elm.Main.init({
     , encodedPassword : localStorage.getItem("odooPassword") || ""
     , encodedCustomers : localStorage.getItem("customers") || ""
     , encodedStock : localStorage.getItem("stock") || ""
+    , seed: randInts[0]
   }
 });
 
@@ -106,4 +116,5 @@ async function createSaleOrder(order){
       'create',
       [[{'order_id': orderId, 'product_id': line.beer.id, 'product_uom_qty': line.quantity}]]);
   });
+  app.ports.orderSavedOnServer.send(order, orderId);
 }

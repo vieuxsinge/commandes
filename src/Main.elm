@@ -7,18 +7,21 @@ import Html exposing (..)
 import Html.Attributes exposing (attribute, class, colspan, id, list, placeholder, src, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode
-import Json.Decode.Pipeline exposing (required)
+import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode
+import Json.Encode.Extra
 import List
 import List.Extra
 import Maybe.Extra exposing (isJust, join, values)
 import Parser exposing ((|.), (|=), Parser, chompWhile, getChompedString, int, run, spaces, succeed, symbol)
+import Random exposing (Seed, initialSeed, step)
 import Stock
 import String.Extra
 import Task
 import Time
 import Time.Format
 import Time.Format.Config.Config_fr_fr exposing (config)
+import Uuid
 
 
 type alias Model =
@@ -33,6 +36,8 @@ type alias Model =
     , serverPassword : Maybe String
     , serverPasswordInput : String
     , stock : Stock.Stock
+    , currentSeed : Seed
+    , currentUuid : Maybe Uuid.Uuid
     }
 
 
@@ -46,6 +51,8 @@ type alias Order =
     { customer : Customer
     , lines : List OrderLine
     , date : Time.Posix
+    , localId : Maybe Uuid.Uuid
+    , remoteId : Maybe Int
     }
 
 
@@ -60,6 +67,7 @@ type alias Flags =
     , encodedPassword : String
     , encodedCustomers : String
     , encodedStock : String
+    , seed : Int
     }
 
 
@@ -68,21 +76,21 @@ noCustomer =
 
 
 init : Flags -> ( Model, Cmd Msg )
-init { encodedOrders, encodedPassword, encodedCustomers, encodedStock } =
+init flags =
     let
         customers =
-            Json.Decode.decodeString customersDecoder encodedCustomers
+            Json.Decode.decodeString customersDecoder flags.encodedCustomers
                 |> Result.withDefault []
 
         orders =
-            Json.Decode.decodeString ordersDecoder encodedOrders
+            Json.Decode.decodeString ordersDecoder flags.encodedOrders
                 |> Result.withDefault []
 
         stock =
-            Stock.decodeStock encodedStock
+            Stock.decodeStock flags.encodedStock
 
         password =
-            case encodedPassword of
+            case flags.encodedPassword of
                 "" ->
                     Nothing
 
@@ -100,6 +108,8 @@ init { encodedOrders, encodedPassword, encodedCustomers, encodedStock } =
       , customers = []
       , customerInput = ""
       , selectedCustomer = Nothing
+      , currentSeed = initialSeed flags.seed
+      , currentUuid = Nothing
       }
     , Cmd.batch
         [ retrieveCustomersFromServer ""
@@ -127,6 +137,7 @@ type Msg
     | RetrieveCustomers
     | GotCustomersFromServer String
     | CreateOrdersOnServer
+    | NewUuid
     | NoOp
 
 
@@ -154,20 +165,38 @@ update msg model =
 
         UpdateInput content ->
             let
+                ( newModel, cmd ) =
+                    update NewUuid model
+
                 customer =
-                    model.selectedCustomer |> Maybe.withDefault noCustomer
+                    newModel.selectedCustomer |> Maybe.withDefault noCustomer
+
+                uuid =
+                    case newModel.currentOrder of
+                        Just o ->
+                            case o.localId of
+                                Just u ->
+                                    Just u
+
+                                Nothing ->
+                                    newModel.currentUuid
+
+                        Nothing ->
+                            newModel.currentUuid
 
                 order =
-                    Order
-                        customer
-                        (parseItems (Just content) (model.stock |> Dict.values |> List.concat))
-                        model.currentDate
+                    { customer = customer
+                    , lines = parseItems (Just content) (newModel.stock |> Dict.values |> List.concat)
+                    , date = newModel.currentDate
+                    , localId = uuid
+                    , remoteId = Nothing
+                    }
             in
-            ( { model
+            ( { newModel
                 | currentOrder = Just order
                 , orderInput = content
               }
-            , Cmd.none
+            , cmd
             )
 
         UpdateCustomerInput content ->
@@ -261,6 +290,19 @@ update msg model =
 
         CreateOrdersOnServer ->
             ( model, createOrdersOnServer (encodeOrders model.orders) )
+
+        NewUuid ->
+            let
+                ( newUuid, newSeed ) =
+                    step Uuid.uuidGenerator model.currentSeed
+            in
+            -- 2.: Store the new seed
+            ( { model
+                | currentUuid = Just newUuid
+                , currentSeed = newSeed
+              }
+            , Cmd.none
+            )
 
         NoOp ->
             ( model, Cmd.none )
@@ -536,6 +578,8 @@ encodeOrder order =
         [ ( "customer", encodeCustomer order.customer )
         , ( "orders", Json.Encode.list encodeOrderLine order.lines )
         , ( "date", order.date |> Time.posixToMillis |> Json.Encode.int )
+        , ( "localId", order.localId |> Json.Encode.Extra.maybe Uuid.encode )
+        , ( "remoteId", order.remoteId |> Json.Encode.Extra.maybe Json.Encode.int )
         ]
 
 
@@ -558,6 +602,8 @@ orderDecoder =
         |> required "customer" customerDecoder
         |> required "orders" (Json.Decode.list orderLineDecoder)
         |> required "date" (Json.Decode.map Time.millisToPosix Json.Decode.int)
+        |> optional "localId" (Json.Decode.map Just Uuid.decoder) Nothing
+        |> optional "remoteId" (Json.Decode.map Just Json.Decode.int) Nothing
 
 
 orderLineDecoder : Json.Decode.Decoder OrderLine
