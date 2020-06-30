@@ -64,6 +64,7 @@ const callOdoo = async (model, method, params) => {
         if (err) {
           reject(new Error(err));
         }
+        console.log(value);
         resolve(value);
       });
     });

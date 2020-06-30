@@ -39,6 +39,10 @@ empty =
     Dict.empty
 
 
+depositKeg =
+    { id = 144, format = NoFormat, available = 0, code = "consigne", name = "Fût consigné" }
+
+
 convertToBoxes : BeerFormat -> Int -> Int
 convertToBoxes format number =
     case format of
@@ -52,7 +56,7 @@ convertToBoxes format number =
             number
 
         NoFormat ->
-            0
+            number
 
 
 convertToUnits : BeerFormat -> Int -> Int
@@ -143,7 +147,7 @@ formatToString beerFormat =
             "20L"
 
         NoFormat ->
-            "?"
+            ""
 
 
 stringToFormat : String -> BeerFormat

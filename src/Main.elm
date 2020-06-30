@@ -267,7 +267,7 @@ update msg model =
 
 
 parseItems : Maybe String -> List Stock.StockItem -> List OrderLine
-parseItems text items =
+parseItems text availableItems =
     case text of
         Nothing ->
             []
@@ -275,8 +275,20 @@ parseItems text items =
         Just string ->
             String.split "," string
                 |> List.map String.trim
-                |> List.map (toOrderLine items)
+                |> List.map (toOrderLine availableItems)
                 |> List.filterMap identity
+                |> addExtraOrderLines
+
+
+addExtraOrderLines : List OrderLine -> List OrderLine
+addExtraOrderLines sourceLines =
+    let
+        kegs =
+            List.filter (\line -> line.beer.format == Stock.Keg20L) sourceLines
+                |> List.map (\line -> line.quantity)
+                |> List.sum
+    in
+    { quantity = kegs, beer = Stock.depositKeg } :: sourceLines
 
 
 toOrderLine : List Stock.StockItem -> String -> Maybe OrderLine
@@ -320,7 +332,7 @@ orderToString order =
                         )
                             ++ line.beer.code
                     )
-                    order.lines
+                    (order.lines |> List.filter (\line -> line.beer.format /= Stock.NoFormat))
     in
     orders
 
@@ -339,6 +351,10 @@ viewOrder itemNumber order =
     let
         viewLi line =
             li [] [ viewOrderLine line |> text ]
+
+        lines =
+            order.lines
+                |> List.filter (\line -> line.beer.format /= Stock.NoFormat)
     in
     article
         [ class "media" ]
@@ -358,7 +374,7 @@ viewOrder itemNumber order =
                     , br
                         []
                         []
-                    , ul [ class "order" ] (List.map viewLi order.lines)
+                    , ul [ class "order" ] (List.map viewLi lines)
                     ]
                 ]
             ]
