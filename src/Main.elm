@@ -117,6 +117,7 @@ type Msg
     | UpdateCustomerInput String
     | SaveOrder
     | EditOrder Order Int
+    | DeleteOrder Order Int
     | ResetOrders
     | SaveServerPassword
     | UpdateServerPassword String
@@ -198,6 +199,13 @@ update msg model =
                     , selectedCustomer = Just order.customer
                     , customerInput = order.customer.name
                 }
+
+        DeleteOrder order _ ->
+            ( { model
+                | orders = model.orders |> List.Extra.remove order
+              }
+            , Cmd.none
+            )
 
         SaveOrder ->
             case model.currentOrder of
@@ -309,36 +317,40 @@ orderToString order =
     orders
 
 
-viewOrderLine : OrderLine -> Html Msg
+viewOrderLine : OrderLine -> String
 viewOrderLine line =
-    li []
-        [ text
-            (String.fromInt line.quantity
-                ++ " × "
-                ++ line.beer.name
-                ++ " "
-                ++ Stock.formatToString line.beer.format
-            )
-        ]
+    String.fromInt line.quantity
+        ++ " × "
+        ++ line.beer.name
+        ++ " "
+        ++ Stock.formatToString line.beer.format
 
 
 viewOrder : Int -> Order -> Html Msg
 viewOrder itemNumber order =
+    let
+        viewLi line =
+            li [] [ viewOrderLine line |> text ]
+    in
     article
         [ class "media" ]
         [ div
             [ class "media-content" ]
             [ div
-                [ class "content", onClick (EditOrder order itemNumber) ]
+                [ class "content" ]
                 [ p
                     []
                     [ strong
                         []
                         [ text order.customer.name ]
+                    , span [ class "commands" ]
+                        [ a [ onClick (EditOrder order itemNumber) ] [ text "edit" ]
+                        , a [ onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
+                        ]
                     , br
                         []
                         []
-                    , ul [] (List.map viewOrderLine order.lines)
+                    , ul [ class "order" ] (List.map viewLi order.lines)
                     ]
                 ]
             ]
@@ -402,10 +414,43 @@ mainView model =
                         ]
                     ]
                 , div [ class "column current-order" ]
-                    [ viewOrders model.orders
+                    [ viewCurrentOrder model.currentOrder model.selectedCustomer
+                    , viewOrders model.orders
                     ]
                 ]
             ]
+        ]
+
+
+viewCurrentOrder : Maybe Order -> Maybe Customer -> Html Msg
+viewCurrentOrder order customer =
+    let
+        item =
+            case order of
+                Just o ->
+                    case o.lines of
+                        [] ->
+                            case customer of
+                                Just c ->
+                                    text c.name
+
+                                Nothing ->
+                                    text "?"
+
+                        lines ->
+                            let
+                                orders =
+                                    List.map viewOrderLine lines
+                                        |> List.intersperse ", "
+                                        |> String.concat
+                            in
+                            o.customer.name ++ " : " ++ orders |> text
+
+                Nothing ->
+                    text "⠀"
+    in
+    div [ class "current-order" ]
+        [ item
         ]
 
 
@@ -426,7 +471,15 @@ customerInputView model =
             option [ value customer.name ] [ customer.name |> text ]
     in
     div []
-        [ input [ id "customer", list "customers", class "customer-input", onInput UpdateCustomerInput, value model.customerInput ] []
+        [ input
+            [ id "customer"
+            , placeholder "Client"
+            , list "customers"
+            , class "customer-input"
+            , onInput UpdateCustomerInput
+            , value model.customerInput
+            ]
+            []
         , datalist [ id "customers" ] (List.map getOption model.customers)
         ]
 
