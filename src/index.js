@@ -1,6 +1,7 @@
 import "./main.css";
 import * as xmlrpc from "xmlrpc";
 import * as Odoo from "odoo-xmlrpc";
+import AwaitLock from 'await-lock';
 import { Elm } from "./Main.elm";
 import * as serviceWorker from "./serviceWorker";
 
@@ -51,49 +52,45 @@ var odoo = new Odoo({
     password: localStorage.getItem("odooPassword")
 });
 
-const callOdoo = (model, method, params) => {
-  return new Promise((resolve, reject) => {
-    odoo.connect((err) => {
+var lock = new AwaitLock();
+
+const callOdoo = async (model, method, params) => {
+  return new Promise(async (resolve, reject) => {
+    odoo.connect(async (err) => {
       if (err) reject(new Error(err));
+      await lock.acquireAsync();
       odoo.execute_kw(model, method, params, (err, value) => {
-        if (err) reject(new Error(err));
-          resolve(value);
+        lock.release();
+        if (err) {
+          reject(new Error(err));
+        }
+        resolve(value);
       });
     });
   });
 }
 
-function getStockFromOdoo() {
-  odoo.connect(function (err) {
-    if (err) { return console.log(err); }
-
-    odoo.execute_kw(
-      'product.product',
-      'search_read',
-      [
-        [[['x_volume', '>=', '0.1']]],
-        {'fields': ['x_beername', 'qty_available', 'x_volume', 'name', 'default_code']}
-      ], function(err, items) {
-        console.log(items);
-        app.ports.gotStockFromServer.send(JSON.stringify(items));
-      });
-    });
+async function getStockFromOdoo() {
+  let items = await callOdoo(
+    'product.product',
+    'search_read',
+    [
+      [[['x_volume', '>=', '0.1']]],
+      {'fields': ['x_beername', 'qty_available', 'x_volume', 'name', 'default_code']}
+    ]
+  );
+  app.ports.gotStockFromServer.send(JSON.stringify(items));
 }
 
-function getCustomers() {
-  odoo.connect(function (err) {
-    if (err) { return console.log(err); }
-
-    odoo.execute_kw(
-      'res.partner',
-      'search_read',
-      [
-        [[['is_company', '=', true],['customer', '=', true]]],
-        {'fields': ['name']}
-      ], function(err, items) {
-        app.ports.gotCustomersFromServer.send(JSON.stringify(items));
-      });
-    });
+async function getCustomers() {
+  let items = await callOdoo(
+    'res.partner',
+    'search_read',
+    [
+      [[['is_company', '=', true],['customer', '=', true]]],
+      {'fields': ['name']}
+    ]);
+  app.ports.gotCustomersFromServer.send(JSON.stringify(items));
 }
 
 async function createSaleOrder(order){
@@ -106,10 +103,6 @@ async function createSaleOrder(order){
     await callOdoo(
       'sale.order.line',
       'create',
-      [[{
-        order_id: orderId,
-        product_id: line.beer.id,
-        product_uom_qty: line.quantity
-      }]]);
+      [[{'order_id': orderId, 'product_id': line.beer.id, 'product_uom_qty': line.quantity}]]);
   });
 }
