@@ -116,5 +116,9 @@ async function createSaleOrder(order){
       'create',
       [[{'order_id': orderId, 'product_id': line.beer.id, 'product_uom_qty': line.quantity}]]);
   });
-  app.ports.orderSavedOnServer.send(order, orderId);
+  app.ports.gotOrderIdFromServer.send(JSON.stringify(
+    {
+      'localId' : order.localId
+      , 'remoteId' : orderId
+  }));
 }

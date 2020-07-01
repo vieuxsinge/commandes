@@ -56,6 +56,12 @@ type alias Order =
     }
 
 
+type alias OrderId =
+    { localId : Uuid.Uuid
+    , remoteId : Int
+    }
+
+
 type alias Customer =
     { id : Int
     , name : String
@@ -137,6 +143,7 @@ type Msg
     | RetrieveCustomers
     | GotCustomersFromServer String
     | CreateOrdersOnServer
+    | GotOrderIdFromServer String
     | NewUuid
     | NoOp
 
@@ -291,6 +298,24 @@ update msg model =
         CreateOrdersOnServer ->
             ( model, createOrdersOnServer (encodeOrders model.orders) )
 
+        GotOrderIdFromServer encodedOrderId ->
+            let
+                newModel =
+                    case Json.Decode.decodeString orderIdDecoder encodedOrderId of
+                        Ok orderId ->
+                            { model
+                                | orders =
+                                    model.orders
+                                        |> List.Extra.updateIf
+                                            (\item -> item.localId == Just orderId.localId)
+                                            (\order -> { order | remoteId = Just orderId.remoteId })
+                            }
+
+                        Err e ->
+                            model
+            in
+            ( newModel, storeOrders (encodeOrders newModel.orders) )
+
         NewUuid ->
             let
                 ( newUuid, newSeed ) =
@@ -408,7 +433,13 @@ viewOrder itemNumber order =
                     []
                     [ strong
                         []
-                        [ text order.customer.name ]
+                        [ case order.remoteId of
+                            Just int ->
+                                "⇋ " ++ order.customer.name |> text
+
+                            Nothing ->
+                                text order.customer.name
+                        ]
                     , span [ class "commands" ]
                         [ a [ onClick (EditOrder order itemNumber) ] [ text "edit" ]
                         , a [ onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
@@ -560,6 +591,7 @@ subscriptions model =
         [ Time.every 30000 Tick
         , gotStockFromServer GotStockFromServer
         , gotCustomersFromServer GotCustomersFromServer
+        , gotOrderIdFromServer GotOrderIdFromServer
         ]
 
 
@@ -604,6 +636,13 @@ orderDecoder =
         |> required "date" (Json.Decode.map Time.millisToPosix Json.Decode.int)
         |> optional "localId" (Json.Decode.map Just Uuid.decoder) Nothing
         |> optional "remoteId" (Json.Decode.map Just Json.Decode.int) Nothing
+
+
+orderIdDecoder : Json.Decode.Decoder OrderId
+orderIdDecoder =
+    Json.Decode.succeed OrderId
+        |> required "localId" Uuid.decoder
+        |> required "remoteId" Json.Decode.int
 
 
 orderLineDecoder : Json.Decode.Decoder OrderLine
@@ -663,6 +702,9 @@ port gotCustomersFromServer : (String -> msg) -> Sub msg
 
 
 port createOrdersOnServer : Json.Encode.Value -> Cmd msg
+
+
+port gotOrderIdFromServer : (String -> msg) -> Sub msg
 
 
 
