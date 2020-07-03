@@ -40,7 +40,7 @@ empty =
 
 
 depositKeg =
-    { id = 144, format = NoFormat, available = 0, code = "consigne", name = "Fût consigné" }
+    { id = 181, format = NoFormat, available = 0, code = "consigne", name = "Fût consigné" }
 
 
 convertToBoxes : BeerFormat -> Int -> Int
@@ -80,7 +80,7 @@ hasStock ( string, items ) =
     items
         |> List.map .available
         |> List.sum
-        |> (<=) 1
+        |> (/=) 0
 
 
 viewStockForBeer : ( String, List StockItem ) -> Html msg

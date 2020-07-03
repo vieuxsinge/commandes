@@ -35,9 +35,11 @@ type alias Model =
     , customers : List Customer
     , serverPassword : Maybe String
     , serverPasswordInput : String
-    , stock : Stock.Stock
+    , realStock : Stock.Stock
     , currentSeed : Seed
     , currentUuid : Maybe Uuid.Uuid
+    , incomingBrews : List OrderLine
+    , incomingBrewsInput : String
     }
 
 
@@ -73,6 +75,7 @@ type alias Flags =
     , encodedPassword : String
     , encodedCustomers : String
     , encodedStock : String
+    , encodedIncomingBrews : String
     , seed : Int
     }
 
@@ -95,6 +98,10 @@ init flags =
         stock =
             Stock.decodeStock flags.encodedStock
 
+        incomingBrews =
+            Json.Decode.decodeString (Json.Decode.list orderLineDecoder) flags.encodedIncomingBrews
+                |> Result.withDefault []
+
         password =
             case flags.encodedPassword of
                 "" ->
@@ -110,12 +117,16 @@ init flags =
       , orders = orders
       , serverPassword = password
       , serverPasswordInput = ""
-      , stock = stock
+      , realStock = stock
       , customers = []
       , customerInput = ""
       , selectedCustomer = Nothing
       , currentSeed = initialSeed flags.seed
       , currentUuid = Nothing
+      , incomingBrews = incomingBrews
+      , incomingBrewsInput =
+            incomingBrews
+                |> orderLinesToString
       }
     , Cmd.batch
         [ retrieveCustomersFromServer ""
@@ -144,6 +155,8 @@ type Msg
     | GotCustomersFromServer String
     | CreateOrdersOnServer
     | GotOrderIdFromServer String
+    | UpdateIncomingBrews String
+    | SaveIncomingBrews
     | NewUuid
     | NoOp
 
@@ -170,6 +183,16 @@ update msg model =
             , storePassword password
             )
 
+        UpdateIncomingBrews content ->
+            ( { model | incomingBrewsInput = content }, Cmd.none )
+
+        SaveIncomingBrews ->
+            let
+                brews =
+                    parseItems (Just model.incomingBrewsInput) (model.realStock |> Dict.values |> List.concat)
+            in
+            ( { model | incomingBrews = brews }, storeIncomingBrews (Json.Encode.list encodeOrderLine brews) )
+
         UpdateInput content ->
             let
                 ( newModel, cmd ) =
@@ -193,7 +216,7 @@ update msg model =
 
                 order =
                     { customer = customer
-                    , lines = parseItems (Just content) (newModel.stock |> Dict.values |> List.concat)
+                    , lines = parseItems (Just content) (newModel.realStock |> Dict.values |> List.concat)
                     , date = newModel.currentDate
                     , localId = uuid
                     , remoteId = Nothing
@@ -226,7 +249,7 @@ update msg model =
         EditOrder order itemNumber ->
             let
                 stringOrder =
-                    orderToString order
+                    orderLinesToString order.lines
             in
             update (UpdateInput stringOrder)
                 { model
@@ -286,7 +309,7 @@ update msg model =
                 stock =
                     Stock.decodeFromServer encodedStock
             in
-            ( { model | stock = stock }, storeStock (Stock.encodeStock stock) )
+            ( { model | realStock = stock }, storeStock (Stock.encodeStock stock) )
 
         GotCustomersFromServer encodedCustomers ->
             let
@@ -355,7 +378,11 @@ addExtraOrderLines sourceLines =
                 |> List.map (\line -> line.quantity)
                 |> List.sum
     in
-    { quantity = kegs, beer = Stock.depositKeg } :: sourceLines
+    if kegs > 0 then
+        { quantity = kegs, beer = Stock.depositKeg } :: sourceLines
+
+    else
+        sourceLines
 
 
 toOrderLine : List Stock.StockItem -> String -> Maybe OrderLine
@@ -387,21 +414,47 @@ toOrderLine stockItems query =
         Nothing
 
 
-orderToString : Order -> String
-orderToString order =
+orderLinesToString : List OrderLine -> String
+orderLinesToString lines =
+    String.join ", " <|
+        List.map
+            (\line ->
+                (Stock.convertToBoxes line.beer.format line.quantity
+                    |> String.fromInt
+                )
+                    ++ line.beer.code
+            )
+            (lines |> List.filter (\line -> line.beer.format /= Stock.NoFormat))
+
+
+getCurrentStock : (Int -> Int -> Int) -> Stock.Stock -> List OrderLine -> Stock.Stock
+getCurrentStock operation realStock lines =
+    lines
+        |> List.foldl (reduceStock operation) realStock
+
+
+reduceStock : (Int -> Int -> Int) -> OrderLine -> Stock.Stock -> Stock.Stock
+reduceStock operation line stock =
     let
-        orders =
-            String.join ", " <|
-                List.map
-                    (\line ->
-                        (Stock.convertToBoxes line.beer.format line.quantity
-                            |> String.fromInt
-                        )
-                            ++ line.beer.code
-                    )
-                    (order.lines |> List.filter (\line -> line.beer.format /= Stock.NoFormat))
+        beerName =
+            line.beer.name
+
+        updateStockItem item =
+            if item.code == line.beer.code then
+                { item | available = operation item.available line.quantity }
+
+            else
+                item
+
+        updateStockItemList list =
+            case list of
+                Just source ->
+                    Just (List.map updateStockItem source)
+
+                Nothing ->
+                    Nothing
     in
-    orders
+    Dict.update line.beer.name updateStockItemList stock
 
 
 viewOrderLine : OrderLine -> String
@@ -428,7 +481,7 @@ viewOrder itemNumber order =
         [ div
             [ class "media-content" ]
             [ div
-                [ class "content" ]
+                [ class "content", class "order" ]
                 [ p
                     []
                     [ strong
@@ -506,8 +559,28 @@ mainView model =
                 [ section [ class "column is-one-third" ]
                     [ div [ class "columns is-centered" ]
                         [ div [ class "column is-narrow" ]
-                            [ Stock.viewTableStock model.stock
+                            [ let
+                                stockAfterIncomingBrews =
+                                    getCurrentStock (+) model.realStock model.incomingBrews
+
+                                stockAfterOrders =
+                                    getCurrentStock (-)
+                                        stockAfterIncomingBrews
+                                        (model.orders
+                                            |> List.map .lines
+                                            |> List.concat
+                                        )
+                              in
+                              Stock.viewTableStock stockAfterOrders
                             ]
+                        ]
+                    , form [ id "incomingbrews-form", onSubmit SaveIncomingBrews ]
+                        [ input
+                            [ placeholder "Brassins en cours"
+                            , onInput UpdateIncomingBrews
+                            , value model.incomingBrewsInput
+                            ]
+                            []
                         ]
                     ]
                 , div [ class "column current-order" ]
@@ -687,6 +760,9 @@ port storeStock : Json.Encode.Value -> Cmd msg
 
 
 port storePassword : String -> Cmd msg
+
+
+port storeIncomingBrews : Json.Encode.Value -> Cmd msg
 
 
 port retrieveStockFromServer : String -> Cmd msg

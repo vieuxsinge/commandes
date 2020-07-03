@@ -21,6 +21,7 @@ var app = Elm.Main.init({
     , encodedPassword : localStorage.getItem("odooPassword") || ""
     , encodedCustomers : localStorage.getItem("customers") || ""
     , encodedStock : localStorage.getItem("stock") || ""
+    , encodedIncomingBrews : localStorage.getItem("incomingBrews") || ""
     , seed: randInts[0]
   }
 });
@@ -35,6 +36,10 @@ app.ports.storeCustomers.subscribe(function (customers) {
 
 app.ports.storeStock.subscribe(function (stock) {
   localStorage.setItem("stock", JSON.stringify(stock));
+});
+
+app.ports.storeIncomingBrews.subscribe(function (brews) {
+  localStorage.setItem("incomingBrews", JSON.stringify(brews));
 });
 
 app.ports.storePassword.subscribe(function (password) {

@@ -60,3 +60,11 @@ ul.order {
 .commands > a {
   margin: 0px 5px;
 }
+
+.order {
+  text-align: left;
+}
+
+.orders {
+  padding-left: 1em;
+}
