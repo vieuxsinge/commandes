@@ -38,7 +38,7 @@ input {
   background-color: #c5c5c51f;
 }
 
-.order-input, .customer-input {
+.order-input, .customer-input, .incoming-brews {
   border: 1px #eaeaea solid;
   width: 100%;
   padding-left: 1em;

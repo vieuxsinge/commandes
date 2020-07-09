@@ -145,6 +145,7 @@ type Msg
     | SaveOrder
     | EditOrder Order Int
     | DeleteOrder Order Int
+    | SyncOrder Order Int
     | ResetOrders
     | SaveServerPassword
     | UpdateServerPassword String
@@ -265,6 +266,9 @@ update msg model =
               }
             , Cmd.none
             )
+
+        SyncOrder order _ ->
+            ( model, createOrdersOnServer (encodeOrders [ order ]) )
 
         SaveOrder ->
             case model.currentOrder of
@@ -496,6 +500,7 @@ viewOrder itemNumber order =
                     , span [ class "commands" ]
                         [ a [ onClick (EditOrder order itemNumber) ] [ text "edit" ]
                         , a [ onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
+                        , a [ onClick (SyncOrder order itemNumber) ] [ text "sync" ]
                         ]
                     , br
                         []
@@ -579,6 +584,7 @@ mainView model =
                             [ placeholder "Brassins en cours"
                             , onInput UpdateIncomingBrews
                             , value model.incomingBrewsInput
+                            , class "incoming-brews"
                             ]
                             []
                         ]
