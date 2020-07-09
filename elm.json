@@ -9,6 +9,7 @@
             "CoderDennis/elm-time-format": "1.0.0",
             "NoRedInk/elm-json-decode-pipeline": "1.0.0",
             "NoRedInk/elm-simple-fuzzy": "1.0.3",
+            "danhandrea/elm-date-format": "2.0.1",
             "danyx23/elm-uuid": "2.1.2",
             "elm/browser": "1.0.2",
             "elm/core": "1.0.4",
@@ -24,10 +25,7 @@
             "waratuman/time-extra": "1.1.0"
         },
         "indirect": {
-            "NoRedInk/elm-random-general": "1.0.0",
-            "NoRedInk/elm-random-pcg-extended": "1.0.0",
             "elm/regex": "1.0.0",
-            "elm/svg": "1.0.1",
             "elm/url": "1.0.0",
             "elm/virtual-dom": "1.0.2",
             "justinmimbs/timezone-data": "2.1.4",
@@ -38,6 +36,10 @@
         "direct": {
             "elm-explorations/test": "1.0.0"
         },
-        "indirect": {}
+        "indirect": {
+            "NoRedInk/elm-random-general": "1.0.0",
+            "NoRedInk/elm-random-pcg-extended": "1.0.0",
+            "elm/svg": "1.0.1"
+        }
     }
 }

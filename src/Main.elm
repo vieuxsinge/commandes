@@ -2,6 +2,7 @@ port module Main exposing (..)
 
 import Browser
 import Browser.Dom exposing (focus)
+import DateFormat exposing (french)
 import Dict
 import Html exposing (..)
 import Html.Attributes exposing (attribute, class, colspan, id, list, placeholder, src, type_, value)
@@ -461,18 +462,16 @@ reduceStock operation line stock =
     Dict.update line.beer.name updateStockItemList stock
 
 
-viewOrderLine : OrderLine -> String
-viewOrderLine line =
-    String.fromInt line.quantity
-        ++ " × "
-        ++ line.beer.name
-        ++ " "
-        ++ Stock.formatToString line.beer.format
-
-
 viewOrder : Int -> Order -> Html Msg
 viewOrder itemNumber order =
     let
+        viewOrderLine line =
+            String.fromInt line.quantity
+                ++ " × "
+                ++ line.beer.name
+                ++ " "
+                ++ Stock.formatToString line.beer.format
+
         viewLi line =
             li [] [ viewOrderLine line |> text ]
 
@@ -480,36 +479,74 @@ viewOrder itemNumber order =
             order.lines
                 |> List.filter (\line -> line.beer.format /= Stock.NoFormat)
     in
-    article
-        [ class "media" ]
-        [ div
-            [ class "media-content" ]
-            [ div
-                [ class "content", class "order" ]
-                [ p
-                    []
-                    [ strong
-                        []
-                        [ case order.remoteId of
+    div
+        [ class "card" ]
+        [ header
+            [ class "card-header" ]
+            [ p
+                [ class "card-header-title" ]
+                [ let
+                    date =
+                        DateFormat.formatI18n french "dd MMMM" Time.utc order.date
+
+                    name =
+                        case order.remoteId of
                             Just int ->
-                                "⇋ " ++ order.customer.name |> text
+                                "⇋ " ++ order.customer.name
 
                             Nothing ->
-                                text order.customer.name
-                        ]
-                    , span [ class "commands" ]
-                        [ a [ onClick (EditOrder order itemNumber) ] [ text "edit" ]
-                        , a [ onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
-                        , a [ onClick (SyncOrder order itemNumber) ] [ text "sync" ]
-                        ]
-                    , br
-                        []
-                        []
-                    , ul [ class "order" ] (List.map viewLi lines)
-                    ]
+                                order.customer.name
+                  in
+                  name ++ " (" ++ date ++ ") " |> text
                 ]
             ]
+        , div
+            [ class "card-content" ]
+            [ div
+                [ class "content" ]
+                [ ul [ class "order" ] (List.map viewLi lines)
+                ]
+            ]
+        , footer
+            [ class "card-footer" ]
+            [ a [ class "card-footer-item", onClick (EditOrder order itemNumber) ] [ text "edit" ]
+            , a [ class "card-footer-item", onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
+            , a [ class "card-footer-item", onClick (SyncOrder order itemNumber) ] [ text "sync" ]
+            ]
         ]
+
+
+
+-- article
+-- [ class "media" ]
+-- [ div
+--     [ class "media-content" ]
+--     [ div
+--         [ class "content", class "order" ]
+--         [ p
+--             []
+--             [ strong
+--                 []
+--                 [ case order.remoteId of
+--                     Just int ->
+--                         "⇋ " ++ order.customer.name |> text
+--
+--                     Nothing ->
+--                         text order.customer.name
+--                 ]
+--             , span [ class "commands" ]
+--                 [ a [ onClick (EditOrder order itemNumber) ] [ text "edit" ]
+--                 , a [ onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
+--                 , a [ onClick (SyncOrder order itemNumber) ] [ text "sync" ]
+--                 ]
+--             , br
+--                 []
+--                 []
+--             , ul [ class "order" ] (List.map viewLi lines)
+--             ]
+--         ]
+--     ]
+-- ]
 
 
 view : Model -> Html Msg
@@ -601,6 +638,13 @@ mainView model =
 viewCurrentOrder : Maybe Order -> Maybe Customer -> Html Msg
 viewCurrentOrder order customer =
     let
+        viewOrderLine line =
+            String.fromInt line.quantity
+                ++ " × "
+                ++ line.beer.name
+                ++ " "
+                ++ Stock.formatToString line.beer.format
+
         item =
             case order of
                 Just o ->
