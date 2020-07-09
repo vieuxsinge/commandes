@@ -667,10 +667,11 @@ customerInputView model =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ Time.every 30000 Tick
+        [ Time.every (30 * 1000) Tick
         , gotStockFromServer GotStockFromServer
         , gotCustomersFromServer GotCustomersFromServer
         , gotOrderIdFromServer GotOrderIdFromServer
+        , Time.every (30 * 1000) (\_ -> RetrieveCustomers)
         ]
 
 
