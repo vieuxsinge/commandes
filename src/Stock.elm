@@ -99,19 +99,28 @@ viewStockForBeer ( beerName, items ) =
                     in
                     case available of
                         0 ->
-                            text "-"
+                            td [] [ text "-" ]
 
                         _ ->
-                            String.fromInt available |> text
+                            td
+                                [ class
+                                    (if available > 0 then
+                                        "positive-stock"
+
+                                     else
+                                        "negative-stock"
+                                    )
+                                ]
+                                [ String.fromInt available |> text ]
 
                 Nothing ->
-                    text "-"
+                    td [] [ text "-" ]
     in
     tr []
         [ td [] [ text beerName ]
-        , td [] [ getFormat Bottle75 |> asStock ]
-        , td [] [ getFormat Bottle33 |> asStock ]
-        , td [] [ getFormat Keg20L |> asStock ]
+        , getFormat Bottle75 |> asStock
+        , getFormat Bottle33 |> asStock
+        , getFormat Keg20L |> asStock
         ]
 
 

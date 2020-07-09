@@ -81,3 +81,7 @@ ul.order {
   margin-bottom: 2em;
   width: 98%;
 }
+
+.negative-stock {
+  color: #ff3860;
+}

@@ -575,7 +575,18 @@ mainView model =
             [ nav [ class "level" ]
                 [ div [ class "level-left" ]
                     [ div [ class "level-item" ]
-                        [ h1 [] [ text "Liste des commandes" ]
+                        [ let
+                            count =
+                                model.orders |> List.length
+                          in
+                          h1 []
+                            [ case count of
+                                0 ->
+                                    "Aucun commande pour le moment" |> text
+
+                                _ ->
+                                    (count |> String.fromInt) ++ " commandes" |> text
+                            ]
                         ]
                     ]
                 , div [ class "level-right" ]
