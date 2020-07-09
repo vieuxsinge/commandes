@@ -66,5 +66,12 @@ ul.order {
 }
 
 .orders {
+  margin-top: 1em;
   padding-left: 1em;
+  max-height: 400px;
+  overflow-y: scroll;
+}
+
+.current-order {
+  font-style: italic;
 }
