@@ -542,7 +542,7 @@ mainView model =
                         ]
                     ]
                 , div [ class "level-right" ]
-                    [ p [ class "level-item", onClick CreateOrdersOnServer ] [ text "créer les bons de commande" ]
+                    [ p [ class "level-item", onClick RetrieveStock ] [ text "mettre le stock à jour" ]
                     ]
                 ]
             , div [ class "columns" ]
@@ -589,7 +589,7 @@ mainView model =
                             []
                         ]
                     ]
-                , div [ class "column current-order" ]
+                , div [ class "column" ]
                     [ viewCurrentOrder model.currentOrder model.selectedCustomer
                     , viewOrders model.orders
                     ]
