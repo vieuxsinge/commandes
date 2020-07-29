@@ -278,7 +278,6 @@ decodeFromServer encoded =
     let
         source =
             Json.Decode.decodeString serverStockDecoder encoded
-                |> Debug.log "decodedString from server"
                 |> Result.withDefault []
     in
     source
