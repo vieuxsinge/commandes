@@ -276,9 +276,23 @@ type alias SourceStockFormat =
 decodeFromServer : String -> Stock
 decodeFromServer encoded =
     let
-        source =
+        _ =
+            encoded |> Debug.log "raw from server"
+
+        sourceResult =
             Json.Decode.decodeString serverStockDecoder encoded
-                |> Result.withDefault []
+
+        source =
+            case sourceResult of
+                Ok value ->
+                    value
+
+                Err error ->
+                    let
+                        _ =
+                            error |> Debug.log "error while decoding JSON"
+                    in
+                    []
     in
     source
         |> List.foldl transformSources []
@@ -318,6 +332,13 @@ serverStockItemDecoder =
         |> required "qty_available" Json.Decode.int
         |> required "x_volume" toBeerFormat
         |> required "default_code" Json.Decode.string
+
+
+dedebug : String -> Json.Decode.Decoder a -> Json.Decode.Decoder a
+dedebug tag decoder =
+    Json.Decode.value
+        |> Json.Decode.andThen
+            (Json.Encode.encode 0 >> Debug.log tag >> always decoder)
 
 
 transformSources : SourceStockFormat -> List ( String, List StockItem ) -> List ( String, List StockItem )
