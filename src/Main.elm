@@ -334,9 +334,8 @@ update msg model =
                             { model
                                 | orders =
                                     model.orders
-                                        |> List.Extra.updateIf
+                                        |> List.Extra.filterNot
                                             (\item -> item.localId == Just orderId.localId)
-                                            (\order -> { order | remoteId = Just orderId.remoteId })
                             }
 
                         Err e ->
@@ -509,44 +508,10 @@ viewOrder itemNumber order =
             ]
         , footer
             [ class "card-footer" ]
-            [ a [ class "card-footer-item", onClick (EditOrder order itemNumber) ] [ text "edit" ]
+            [ a [ class "card-footer-item", onClick (SyncOrder order itemNumber) ] [ text "sync" ]
             , a [ class "card-footer-item", onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
-            , a [ class "card-footer-item", onClick (SyncOrder order itemNumber) ] [ text "sync" ]
             ]
         ]
-
-
-
--- article
--- [ class "media" ]
--- [ div
---     [ class "media-content" ]
---     [ div
---         [ class "content", class "order" ]
---         [ p
---             []
---             [ strong
---                 []
---                 [ case order.remoteId of
---                     Just int ->
---                         "⇋ " ++ order.customer.name |> text
---
---                     Nothing ->
---                         text order.customer.name
---                 ]
---             , span [ class "commands" ]
---                 [ a [ onClick (EditOrder order itemNumber) ] [ text "edit" ]
---                 , a [ onClick (DeleteOrder order itemNumber) ] [ text "delete" ]
---                 , a [ onClick (SyncOrder order itemNumber) ] [ text "sync" ]
---                 ]
---             , br
---                 []
---                 []
---             , ul [ class "order" ] (List.map viewLi lines)
---             ]
---         ]
---     ]
--- ]
 
 
 view : Model -> Html Msg
@@ -575,22 +540,7 @@ mainView model =
             [ nav [ class "level" ]
                 [ div [ class "level-left" ]
                     [ div [ class "level-item" ]
-                        [ let
-                            count =
-                                model.orders |> List.length
-                          in
-                          h1 []
-                            [ case count of
-                                0 ->
-                                    "Aucun commande pour le moment" |> text
-
-                                _ ->
-                                    (count |> String.fromInt) ++ " commandes" |> text
-                            ]
-                        ]
-                    ]
-                , div [ class "level-right" ]
-                    [ p [ class "level-item", onClick RetrieveStock ] [ text "mettre le stock à jour" ]
+                        []
                     ]
                 ]
             , div [ class "columns" ]
@@ -609,35 +559,7 @@ mainView model =
                     ]
                 ]
             , div [ class "columns" ]
-                [ section [ class "column is-one-third" ]
-                    [ div [ class "columns is-centered" ]
-                        [ div [ class "column is-narrow" ]
-                            [ let
-                                stockAfterIncomingBrews =
-                                    getCurrentStock (+) model.realStock model.incomingBrews
-
-                                stockAfterOrders =
-                                    getCurrentStock (-)
-                                        stockAfterIncomingBrews
-                                        (model.orders
-                                            |> List.map .lines
-                                            |> List.concat
-                                        )
-                              in
-                              Stock.viewTableStock stockAfterOrders
-                            ]
-                        ]
-                    , form [ id "incomingbrews-form", onSubmit SaveIncomingBrews ]
-                        [ input
-                            [ placeholder "Brassins en cours"
-                            , onInput UpdateIncomingBrews
-                            , value model.incomingBrewsInput
-                            , class "incoming-brews"
-                            ]
-                            []
-                        ]
-                    ]
-                , div [ class "column" ]
+                [ div [ class "column" ]
                     [ viewCurrentOrder model.currentOrder model.selectedCustomer
                     , viewOrders model.orders
                     ]
@@ -689,7 +611,7 @@ viewOrders : List Order -> Html Msg
 viewOrders orders =
     case orders of
         [] ->
-            p [] [ text "Pas de commande enregistrée." ]
+            p [] []
 
         items ->
             ul [ class "orders" ] (List.indexedMap viewOrder orders)
