@@ -2,18 +2,18 @@ module Stock exposing (..)
 
 import Dict exposing (Dict)
 import Html exposing (..)
-import Html.Attributes exposing (class, colspan)
+import Html.Attributes exposing (class)
 import Json.Decode
 import Json.Decode.Pipeline exposing (required)
 import Json.Encode
 import List
-import List.Extra
 import String
 
 
 type BeerFormat
     = Bottle75
     | Bottle33
+    | Can44
     | Keg20L
     | NoFormat
 
@@ -52,6 +52,9 @@ convertToBoxes format number =
         Bottle33 ->
             number // 24
 
+        Can44 ->
+            number // 24
+
         Keg20L ->
             number
 
@@ -66,6 +69,9 @@ convertToUnits format number =
             number * 12
 
         Bottle33 ->
+            number * 24
+
+        Can44 ->
             number * 24
 
         Keg20L ->
@@ -152,6 +158,9 @@ formatToString beerFormat =
         Bottle33 ->
             "33cl"
 
+        Can44 ->
+            "44cl"
+
         Keg20L ->
             "20L"
 
@@ -167,6 +176,9 @@ stringToFormat string =
 
         "33cl" ->
             Bottle33
+
+        "44cl" ->
+            Can44
 
         "20L" ->
             Keg20L
@@ -276,9 +288,8 @@ type alias SourceStockFormat =
 decodeFromServer : String -> Stock
 decodeFromServer encoded =
     let
-        _ =
-            encoded |> Debug.log "raw from server"
-
+        -- _ =
+        --    encoded |> Debug.log "raw from server"
         sourceResult =
             Json.Decode.decodeString serverStockDecoder encoded
 
@@ -288,10 +299,10 @@ decodeFromServer encoded =
                     value
 
                 Err error ->
-                    let
-                        _ =
-                            error |> Debug.log "error while decoding JSON"
-                    in
+                    --    let
+                    --        _ =
+                    --            error |> Debug.log "error while decoding JSON"
+                    --    in
                     []
     in
     source
@@ -311,6 +322,9 @@ toBeerFormat =
             \x ->
                 if x == 0.33 then
                     Bottle33
+
+                else if x == 0.44 then
+                    Can44
 
                 else if x == 0.75 then
                     Bottle75
@@ -332,13 +346,6 @@ serverStockItemDecoder =
         |> required "qty_available" Json.Decode.int
         |> required "x_volume" toBeerFormat
         |> required "default_code" Json.Decode.string
-
-
-dedebug : String -> Json.Decode.Decoder a -> Json.Decode.Decoder a
-dedebug tag decoder =
-    Json.Decode.value
-        |> Json.Decode.andThen
-            (Json.Encode.encode 0 >> Debug.log tag >> always decoder)
 
 
 transformSources : SourceStockFormat -> List ( String, List StockItem ) -> List ( String, List StockItem )

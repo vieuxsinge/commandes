@@ -63,7 +63,7 @@ serviceWorker.unregister();
 var odoo = new Odoo({
     url: "https://odooproxy.vieuxsinge.com/xmlrpc/2",
     db: "brasserieduvieuxsinge",
-    username: "contact@vieuxsinge.com",
+    username: "admin",
     password: localStorage.getItem("odooPassword")
 });
 
